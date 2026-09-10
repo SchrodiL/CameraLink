@@ -19,11 +19,19 @@
 
 #include "freertos/FreeRTOS.h"
 
-#include "connect_logic.h"
-#include "gps_logic.h"
-#include "key_logic.h"
-#include "light_logic.h"
-#include "test_gps.h"
+#include "camera_backend.h"
+#include "controller.h"
+#include "gps.h"
+#include "key.h"
+#include "light.h"
+#include "osd.h"
+#include "ble_common.h"
+#include "pairing.h"
+#include "channel_map.h"
+#include "profile.h"
+#include "web_server.h"
+#include "dji_backend.h"
+#include "insta360_backend.h"
 
 /**
  * @brief Main application function, performs initialization and task loop
@@ -46,26 +54,42 @@ void app_main(void) {
         return;
     }
 
-    /* Initialize GPS module */
-    /* 初始化 GPS 模块 */
+    /* GPS 任务在两种协议下都启动（insta360 模式也读取 GPS 供 OSD 显示） */
     initSendGpsDataToCameraTask();
 
-    vTaskDelay(pdMS_TO_TICKS(2000));
-
-    /* Initialize Bluetooth */
-    /* 初始化蓝牙 */
-    res = connect_logic_ble_init();
-    if (res != 0) {
+    /* 统一拉起 BLE 栈（controller + bluedroid + 统一 GAP 回调），只做一次 */
+    /* Bring up the BLE stack once (controller + bluedroid + unified GAP callback). */
+    if (ble_stack_init() != 0) {
         return;
+    }
+    /* 注册后端 + 统一控制工作队列 */
+    dji_backend_register();
+    insta360_backend_register();
+    controller_init();
+    pairing_init();
+
+    if (!camera_backend_is_paired()) {
+        /* 首次上电未对频：自动进入对频扫描，识别到即运行时切换（不阻塞、不重启） */
+        /* First boot, never paired: auto-enter pairing scan. */
+        pairing_enter();
+    } else {
+        /* 已对频：直接切到上次保存的协议（运行时启动对应角色，不重启） */
+        /* Already paired: switch to the persisted protocol at runtime (no reboot). */
+        camera_backend_switch_to(camera_backend_active_id());
     }
 
     /* Initialize key logic */
     /* 初始化按键逻辑 */
     key_logic_init();
 
-    /* 测试 GPS 推送 */
-    /* Test GPS Data Push */
-    // start_ble_packet_test(1);
+    /* 启动 MSP/OSD 任务，把相机状态写入飞控 OSD（两种协议都工作） */
+    /* Start MSP/OSD task to write camera state to the FC OSD (both protocols) */
+    osd_logic_init();
+
+    /* 通道映射 + profile + WebUI（WiFi AP + HTTP） */
+    channel_map_init();
+    profile_init();
+    web_server_init();
 
     // ===== Subsequent logic loop =====
     // ===== 后续逻辑循环 =====

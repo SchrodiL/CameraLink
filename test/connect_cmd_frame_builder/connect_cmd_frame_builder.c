@@ -31,9 +31,9 @@
 
 // 复用 Demo 中的数据结构定义
 // Reuse data structure definitions from the demo
-#include "../protocol/dji_protocol_data_structures.h"
-#include "../utils/crc/custom_crc16.h"
-#include "../utils/crc/custom_crc32.h"
+#include "../../adapters/dji/dji_protocol_structures.h"
+#include "../../shared/crc/custom_crc16.h"
+#include "../../shared/crc/custom_crc32.h"
 
 // 复用协议解析器的常量定义（从 dji_protocol_parser.c 复制）
 // Reuse protocol parser constants (copied from dji_protocol_parser.c)
@@ -109,11 +109,11 @@ uint8_t* connection_data_creator_standalone(const void *structure, size_t *data_
 
     if ((cmd_type & 0x20) == 0) {
         // 命令帧 / Command frame
-        const connection_request_command_frame *command_frame = (const connection_request_command_frame *)structure;
+        const connection_request_command_frame_t *command_frame = (const connection_request_command_frame_t *)structure;
 
-        *data_length = sizeof(connection_request_command_frame);
+        *data_length = sizeof(connection_request_command_frame_t);
 
-        ESP_LOGI("CONNECTION_CREATOR", "Data length calculated for connection_request_command_frame: %zu", *data_length);
+        ESP_LOGI("CONNECTION_CREATOR", "Data length calculated for connection_request_command_frame_t: %zu", *data_length);
 
         data = (uint8_t *)malloc(*data_length);
         if (data == NULL) {
@@ -124,11 +124,11 @@ uint8_t* connection_data_creator_standalone(const void *structure, size_t *data_
         memcpy(data, command_frame, *data_length);
     } else {
         // 应答帧 / Response frame
-        const connection_request_response_frame *response_frame = (const connection_request_response_frame *)structure;
+        const connection_request_response_frame_t *response_frame = (const connection_request_response_frame_t *)structure;
 
-        *data_length = sizeof(connection_request_response_frame);
+        *data_length = sizeof(connection_request_response_frame_t);
 
-        ESP_LOGI("CONNECTION_CREATOR", "Data length calculated for connection_request_response_frame: %zu", *data_length);
+        ESP_LOGI("CONNECTION_CREATOR", "Data length calculated for connection_request_response_frame_t: %zu", *data_length);
 
         data = (uint8_t *)malloc(*data_length);
         if (data == NULL) {
@@ -337,7 +337,7 @@ void generate_connection_command_frame(uint32_t device_id, const int8_t *mac_add
 
     // 构造连接请求命令帧（复用 connect_logic.c 中的逻辑）
     // Construct connection request command frame (reuse logic from connect_logic.c)
-    connection_request_command_frame connection_request = {
+    connection_request_command_frame_t connection_request = {
         .device_id = device_id,
         .mac_addr_len = mac_addr_len,
         .fw_version = fw_version,

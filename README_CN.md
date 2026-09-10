@@ -22,7 +22,7 @@
 
 ## 开发环境
 
-**软件**：ESP-IDF v5.5
+**软件**：ESP-IDF v6.0
 
 **硬件**：
 
@@ -56,21 +56,23 @@
 ## Demo 结构
 
 ```
-├── ble              # 蓝牙设备层
-├── data             # 数据层
-├── logic            # 逻辑层
-├── protocol         # 协议层
-├── main             # 主程序入口
-├── utils            # 工具函数
-└── CMakeLists.txt   # Demo 构建文件
+├── main/             # 应用装配（app_main + CMakeLists + web 前端）
+├── core/             # 协议无关控制器核心
+│                     #   camera_state / camera_backend / controller / pairing / ble_common
+├── adapters/         # 相机协议后端（实现统一的 camera_backend_t 接口）
+│   ├── dji/          # DJI 后端（GATTC 主机：BLE / 数据 / 协议帧 / 命令 / 连接 / 状态）
+│   └── insta360/     # insta360 后端（GATTS 从机）
+├── services/         # 协议无关功能（GPS / OSD / 通道映射 / profile / 按键 / 灯光 / WebUI）
+├── shared/           # 共享工具与相机域词汇（NVS 辅助 / 相机枚举 / CRC）
+├── components/msp/   # MSP 飞控 OSD 组件
+└── CMakeLists.txt    # Demo 构建文件
 ```
 
-- **ble**：负责 ESP32 与相机之间的 BLE 连接、数据读写等操作。
-- **protocol**：负责协议帧的封装和解析，确保数据通信的正确性。
-- **data**：负责存储解析后的数据，基于 Entry 提供一套高效的读写逻辑，供逻辑层调用。
-- **logic**：实现具体功能，如请求连接、按键操作、GPS 数据处理、相机状态管理、命令发送、灯光控制等。
-- **utils**：工具类，用来实现 CRC 校验等。
-- **main**：程序入口。
+- **core**：协议无关的核心——统一相机状态缓存（`camera_state`）、相机后端接口（`camera_backend`）、统一控制工作队列（`controller`）、对频编排（`pairing`）、BLE 栈统一拉起（`ble_common`）。
+- **adapters**：相机协议后端，各实现一套 `camera_backend_t`；新增一种设备 = 新增一个 backend。
+- **services**：协议无关的控制器功能（GPS 解析、MSP OSD、RC 通道映射、profile、按键、灯光、WebUI）。
+- **shared**：通用工具与共享的相机域枚举（模式/状态/分辨率/帧率/防抖）。
+- **main**：程序入口与应用装配。
 
 ## 程序启动时序图
 

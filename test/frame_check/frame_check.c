@@ -25,8 +25,8 @@
 #include <ctype.h>
 
 // Include CRC calculation functions
-#include "../../utils/crc/custom_crc16.h"
-#include "../../utils/crc/custom_crc32.h"
+#include "../../shared/crc/custom_crc16.h"
+#include "../../shared/crc/custom_crc32.h"
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"

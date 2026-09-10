@@ -22,7 +22,7 @@ Before reading this document and the code, it is recommended to first review the
 
 ## Development Environment
 
-**Software**: ESP-IDF v5.5
+**Software**: ESP-IDF v6.0
 
 **Hardware**:
 
@@ -55,21 +55,24 @@ Please ensure that the pins are correctly connected, especially the TX and RX pi
 ## Demo Structure
 
 ```
-├── ble              # Bluetooth device layer
-├── data             # Data layer
-├── logic            # Logic layer
-├── protocol         # Protocol layer
-├── main             # Main entry point
-├── utils            # Utility functions
-└── CMakeLists.txt   # Demo build file
+├── main/             # Application assembly (app_main + CMakeLists + web frontend)
+├── core/             # Protocol-agnostic controller core
+│                     #   camera_state / camera_backend / controller / pairing / ble_common
+├── adapters/         # Camera protocol backends (each implements camera_backend_t)
+│   ├── dji/          # DJI backend (GATTC master: BLE / data / protocol / command / connect / status)
+│   └── insta360/     # insta360 backend (GATTS slave)
+├── services/         # Protocol-agnostic features (GPS / OSD / channel map / profile / key / light / WebUI)
+├── shared/           # Shared utilities & camera-domain vocabulary (NVS helper / camera enums / CRC)
+├── components/msp/   # MSP flight-controller OSD component
+└── CMakeLists.txt    # Demo build file
 ```
 
-- **ble**: Responsible for BLE connection between the ESP32 and the camera, as well as data read/write operations.
-- **protocol**: Responsible for encapsulating and parsing protocol frames, ensuring the correctness of data communication.
-- **data**: Responsible for storing parsed data and providing an efficient read/write logic based on Entries for the logic layer to use.
-- **logic**: Implements specific functionalities, such as requesting connections, button operations, GPS data processing, camera status management, command sending, light control, etc.
-- **utils**: Utility class used for tasks like CRC checking.
-- **main**: The entry point of the program.
+- **core**: Protocol-agnostic core — unified camera state cache (`camera_state`), camera backend interface (`camera_backend`), unified control worker queue (`controller`), pairing orchestration (`pairing`), BLE stack bring-up (`ble_common`).
+- **adapters**: Camera protocol backends, each implementing `camera_backend_t`; adding a new device = adding a new backend.
+- **services**: Protocol-agnostic controller features (GPS parsing, MSP OSD, RC channel map, profile, key, light, WebUI).
+- **shared**: Common utilities and shared camera-domain enums (mode/status/resolution/fps/eis).
+- **main**: The entry point and application assembly.
+
 
 ## Program Startup Sequence Diagram
 

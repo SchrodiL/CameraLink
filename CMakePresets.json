@@ -1,0 +1,28 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default (development)",
+      "description": "Development configuration",
+      "binaryDir": "C:/Users/34541/Downloads/CamLink/build",
+      "cacheVariables": {
+        "SDKCONFIG": "C:/Users/34541/Downloads/CamLink/sdkconfig"
+      }
+    },
+    {
+      "name": "production",
+      "displayName": "Production",
+      "description": "Production configuration",
+      "binaryDir": "C:/Users/34541/Downloads/CamLink/build",
+      "cacheVariables": {
+        "SDKCONFIG": "C:/Users/34541/Downloads/CamLink/sdkconfig"
+      }
+    }
+  ]
+}

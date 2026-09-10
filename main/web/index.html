@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CamLink</title>
+<style>
+:root {
+  --bg: #12161c;
+  --panel: #1b2129;
+  --border: #2a323d;
+  --text: #e6edf3;
+  --muted: #8b98a5;
+  --accent: #4da3ff;
+  --ok: #3fb950;
+  --warn: #d29922;
+  --err: #f85149;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+header {
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+nav { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+nav button {
+  background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+  padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+nav button.active { color: var(--text); border-color: var(--accent); background: #22303f; }
+main { padding: 16px 18px; max-width: 760px; margin: 0 auto; }
+section { display: none; }
+section.active { display: block; }
+.card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px; margin-bottom: 14px;
+}
+.card h2 { font-size: 14px; margin: 0 0 10px; color: var(--muted); font-weight: 600; }
+.row { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+label { color: var(--muted); min-width: 70px; }
+input[type=number], select, input[type=text] {
+  background: #0f141a; color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 8px; font-size: 14px;
+}
+input[type=number] { width: 90px; }
+button.btn {
+  background: var(--accent); color: #06101c; border: 0; border-radius: 6px;
+  padding: 8px 14px; cursor: pointer; font-size: 14px; font-weight: 600;
+}
+button.btn.secondary { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+button.btn.danger { background: var(--err); color: #fff; }
+.status-badge { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+.dot.on { background: var(--ok); }
+.dot.off { background: var(--err); }
+.dot.warn { background: var(--warn); }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.kv { display: grid; grid-template-columns: 140px 1fr; gap: 6px 10px; }
+.kv b { color: var(--muted); font-weight: 500; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 13px; }
+th { color: var(--muted); font-weight: 500; }
+#toast {
+  position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+  background: #22303f; border: 1px solid var(--accent); color: var(--text);
+  padding: 10px 16px; border-radius: 8px; display: none; z-index: 10;
+}
+.ch-bars { display: flex; gap: 4px; align-items: flex-end; height: 60px; }
+.ch-bar { width: 16px; background: #274a6d; border-radius: 2px 2px 0 0; position: relative; }
+.ch-bar span { position: absolute; bottom: -18px; left: 0; right: 0; text-align: center; font-size: 9px; color: var(--muted); }
+.ch-bar.in-range { background: var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1>CamLink</h1>
+  <nav id="nav"></nav>
+</header>
+<main>
+  <section id="tab-status" class="active">
+    <div class="card">
+      <h2>连接状态</h2>
+      <div class="row">
+        <span class="status-badge"><span class="dot" id="gps-dot"></span> GPS</span>
+      </div>
+      <div class="kv" id="status-kv"></div>
+    </div>
+    <div class="card">
+      <h2>RC 通道实时值</h2>
+      <div class="ch-bars" id="ch-bars"></div>
+    </div>
+  </section>
+
+  <section id="tab-osd">
+    <div class="card">
+      <h2>OSD 槽位布局</h2>
+      <div id="osd-slots"></div>
+      <div class="row">
+        <label>低电量报警 %</label>
+        <input type="number" id="osd-batt" min="0" max="100">
+        <span class="mono" style="color:var(--muted)">0 = 关闭</span>
+      </div>
+      <div class="row"><button class="btn" onclick="saveOsd()">保存 OSD 配置</button></div>
+    </div>
+    <div class="card">
+      <h2>预设</h2>
+      <p style="color:var(--muted)">把当前 OSD + 通道映射存为预设。切换预设：协议切换键<b>短按</b>循环切换。</p>
+      <div class="row">
+        <label>当前预设</label>
+        <span class="mono" id="osd-active-profile">—</span>
+        <button class="btn secondary" onclick="saveProfile(0)">存到 1</button>
+        <button class="btn secondary" onclick="saveProfile(1)">存到 2</button>
+        <button class="btn secondary" onclick="saveProfile(2)">存到 3</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-protocol">
+    <div class="card">
+      <h2>协议与对频</h2>
+      <div class="row">
+        <label>协议</label>
+        <select id="proto-mode">
+          <option value="0">DJI (Osmo Action / 360)</option>
+          <option value="1">insta360 (X / Ace / RS)</option>
+        </select>
+        <button class="btn" onclick="setProtocol()">切换协议</button>
+      </div>
+      <div class="row">
+        <button class="btn secondary" onclick="pairStart()">开始对频</button>
+        <button class="btn secondary" onclick="pairStop()">停止对频</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>WiFi 设置</h2>
+      <div class="row">
+        <label>WiFi 状态</label>
+        <span class="status-badge"><span class="dot" id="wifi-dot"></span> <span id="wifi-state" class="mono">—</span></span>
+        <button class="btn secondary" onclick="wifiOn()">打开</button>
+        <button class="btn secondary" onclick="wifiOff()">关闭</button>
+      </div>
+      <div class="row">
+        <label>空闲判定时长</label>
+        <input type="number" id="wifi-auto-delay" min="1" max="3600">
+        <button class="btn" onclick="saveWifi()">保存</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-chmap">
+    <div class="card">
+      <h2>通道映射（Betaflight Modes 风格）</h2>
+      <p style="color:var(--muted)">每个功能绑定 (通道, 值范围 [min,max])。通道值落在范围内即激活。录制为状态型，其余为边沿触发。通道 0 表示禁用。</p>
+      <div id="chmap-rows"></div>
+      <div class="row"><button class="btn" onclick="saveChmap()">保存通道映射</button></div>
+    </div>
+  </section>
+
+  <section id="tab-firmware">
+    <div class="card">
+      <h2>固件升级 (OTA)</h2>
+      <div class="row">
+        <input type="file" id="ota-file" accept=".bin">
+        <button class="btn" onclick="doOta()">上传并升级</button>
+      </div>
+      <p style="color:var(--warn)">升级完成后设备会自动重启。请勿断开电源。</p>
+    </div>
+  </section>
+
+  <section id="tab-backup">
+    <div class="card">
+      <h2>配置备份 / 恢复</h2>
+      <div class="row">
+        <button class="btn" onclick="doBackup()">导出配置</button>
+        <input type="file" id="restore-file" accept=".json">
+        <button class="btn secondary" onclick="doRestore()">导入配置</button>
+      </div>
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+const TABS = [
+  ['tab-status', '状态'], ['tab-osd', 'OSD'], ['tab-protocol', '协议'],
+  ['tab-chmap', '通道映射'], ['tab-firmware', '固件'],
+  ['tab-backup', '备份'],
+];
+const OSD_ITEMS = ['录制状态', 'GPS 卫星数', '速度+海拔', '相机电量', '录制规格', '名称+剩余容量'];
+const FUNCS = [
+  [1, '录制开/停', true],
+  [2, '快门/拍照', false],
+  [3, '协议切换', false],
+  [4, '对频', false],
+  [5, '切换 Profile 1', false],
+  [6, '切换 Profile 2', false],
+  [7, '切换 Profile 3', false],
+];
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 2500);
+}
+
+/* ---- 导航 ---- */
+function buildNav() {
+  const nav = document.getElementById('nav');
+  TABS.forEach(([id, name]) => {
+    const b = document.createElement('button');
+    b.textContent = name; b.dataset.tab = id;
+    b.onclick = () => showTab(id);
+    nav.appendChild(b);
+  });
+}
+function showTab(id) {
+  document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  document.getElementById(id).classList.add('active');
+}
+
+/* ---- HTTP 辅助 ---- */
+async function jget(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+async function jsend(method, url, body) {
+  const opt = { method, headers: {} };
+  if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  const r = await fetch(url, opt);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+/* ---- 状态 ---- */
+function renderChBars(ch, active) {
+  const el = document.getElementById('ch-bars');
+  el.innerHTML = '';
+  ch.forEach((v, i) => {
+    const d = document.createElement('div');
+    d.className = 'ch-bar';
+    d.style.height = Math.max(2, Math.min(100, (v - 900) / 1200 * 100)) + '%';
+    if (active[i]) d.classList.add('in-range');
+    const s = document.createElement('span'); s.textContent = i + 1;
+    d.appendChild(s); el.appendChild(d);
+  });
+}
+async function pollStatus() {
+  try {
+    const s = await jget('/api/status');
+    const gpsDot = document.getElementById('gps-dot');
+    if (s.gps.valid)        gpsDot.className = 'dot on';    /* 已锁定 → 绿 */
+    else if (s.gps.connected) gpsDot.className = 'dot warn'; /* 已连接未锁定 → 黄 */
+    else                    gpsDot.className = 'dot off';   /* 未连接 → 红 */
+
+    renderWifi(s.wifi_on);
+    document.getElementById('wifi-auto-delay').value = s.wifi_auto_delay;
+    document.getElementById('osd-active-profile').textContent = (s.active_profile + 1);
+
+    const kv = document.getElementById('status-kv');
+    const proto = s.protocol === 1 ? 'insta360' : 'DJI';
+    document.getElementById('proto-mode').value = s.protocol;
+    kv.innerHTML = [
+      ['协议', proto + (s.paired ? ' (已对频)' : ' (未对频)')],
+      ['卫星数', s.gps.satellites],
+      ['GPS 定位', s.gps.valid ? '有效' : (s.gps.connected ? '搜星中' : '未连接')],
+      ['速度', s.gps.speed_ms.toFixed(1) + ' m/s'],
+      ['海拔', s.gps.altitude_m.toFixed(0) + ' m'],
+    ].map(([k, v]) => '<b>' + k + '</b><span>' + v + '</span>').join('');
+
+    renderChBars(s.channels, s.channels.map(() => false));
+  } catch (e) { /* ignore */ }
+}
+
+/* ---- OSD ---- */
+function buildOsd() {
+  const el = document.getElementById('osd-slots');
+  el.innerHTML = '';
+  for (let i = 0; i < 4; i++) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const l = document.createElement('label'); l.textContent = '槽位 ' + (i + 1);
+    const sel = document.createElement('select'); sel.id = 'osd-slot-' + i;
+    OSD_ITEMS.forEach((n, v) => {
+      const o = document.createElement('option'); o.value = v; o.textContent = n;
+      sel.appendChild(o);
+    });
+    row.appendChild(l); row.appendChild(sel); el.appendChild(row);
+  }
+}
+async function loadOsd() {
+  const d = await jget('/api/osd');
+  d.slots.forEach((v, i) => { document.getElementById('osd-slot-' + i).value = v; });
+  document.getElementById('osd-batt').value = d.batt_alarm;
+}
+async function saveOsd() {
+  const slots = [0, 1, 2, 3].map(i => parseInt(document.getElementById('osd-slot-' + i).value, 10));
+  const batt = parseInt(document.getElementById('osd-batt').value, 10) || 0;
+  await jsend('PUT', '/api/osd', { slots, batt_alarm: batt });
+  toast('OSD 配置已保存');
+}
+/* 把当前 OSD + 通道映射存为预设 N（通道映射由后端从 live 快照带入） */
+async function saveProfile(i) {
+  const slots = [0, 1, 2, 3].map(x => parseInt(document.getElementById('osd-slot-' + x).value, 10));
+  const batt = parseInt(document.getElementById('osd-batt').value, 10) || 0;
+  await jsend('PUT', '/api/profile', { index: i, profile: { slots, batt_alarm: batt } });
+  toast('已保存到预设 ' + (i + 1));
+}
+
+/* ---- 协议 ---- */
+async function loadProtocol() {
+  const d = await jget('/api/protocol');
+  document.getElementById('proto-mode').value = d.mode;
+}
+async function setProtocol() {
+  await jsend('PUT', '/api/protocol', { mode: parseInt(document.getElementById('proto-mode').value, 10) });
+  toast('协议切换请求已发送');
+}
+async function pairStart() { await fetch('/api/pairing/start', { method: 'POST' }); toast('开始对频'); }
+async function pairStop() { await fetch('/api/pairing/stop', { method: 'POST' }); toast('停止对频'); }
+
+/* ---- WiFi ---- */
+function renderWifi(on) {
+  document.getElementById('wifi-dot').className = 'dot ' + (on ? 'on' : 'off');
+  document.getElementById('wifi-state').textContent = on ? '开' : '关';
+}
+async function saveWifi() {
+  const delay = parseInt(document.getElementById('wifi-auto-delay').value, 10) || 60;
+  await jsend('PUT', '/api/wifi', { auto_delay: delay });
+  toast('空闲判定时长已保存');
+}
+async function wifiOn() { await jsend('PUT', '/api/wifi', { wifi_on: true }); renderWifi(true); toast('WiFi 已打开'); }
+async function wifiOff() { await jsend('PUT', '/api/wifi', { wifi_on: false }); renderWifi(false); toast('WiFi 已关闭'); }
+
+/* ---- 通道映射 ---- */
+let chmapCache = {};
+function buildChmap() {
+  const el = document.getElementById('chmap-rows');
+  el.innerHTML = '';
+  FUNCS.forEach(([f, name]) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML =
+      '<label>' + name + '</label>' +
+      '<span class="mono" style="color:var(--muted)">通道</span>' +
+      '<input type="number" id="cm-ch-' + f + '" min="0" max="16">' +
+      '<span class="mono" style="color:var(--muted)">min</span>' +
+      '<input type="number" id="cm-min-' + f + '" min="0" max="2500">' +
+      '<span class="mono" style="color:var(--muted)">max</span>' +
+      '<input type="number" id="cm-max-' + f + '" min="0" max="2500">';
+    el.appendChild(row);
+  });
+}
+async function loadChmap() {
+  const d = await jget('/api/chmap');
+  chmapCache = {};
+  d.bindings.forEach(b => { chmapCache[b.func] = b; });
+  FUNCS.forEach(([f]) => {
+    const b = chmapCache[f] || { channel: 0, min: 0, max: 0 };
+    document.getElementById('cm-ch-' + f).value = b.channel;
+    document.getElementById('cm-min-' + f).value = b.min;
+    document.getElementById('cm-max-' + f).value = b.max;
+  });
+}
+async function saveChmap() {
+  const bindings = FUNCS.map(([f]) => ({
+    func: f,
+    channel: parseInt(document.getElementById('cm-ch-' + f).value, 10) || 0,
+    min: parseInt(document.getElementById('cm-min-' + f).value, 10) || 0,
+    max: parseInt(document.getElementById('cm-max-' + f).value, 10) || 0,
+  }));
+  await jsend('PUT', '/api/chmap', { bindings });
+  toast('通道映射已保存');
+}
+
+/* ---- 固件 ---- */
+async function doOta() {
+  const f = document.getElementById('ota-file').files[0];
+  if (!f) { toast('请先选择 .bin 文件'); return; }
+  if (!confirm('确认升级固件？设备将自动重启。')) return;
+  const r = await fetch('/api/ota', { method: 'POST', body: f });
+  if (r.ok) toast('升级中，设备即将重启…');
+  else toast('升级失败：' + r.status);
+}
+
+/* ---- 备份 ---- */
+async function doBackup() {
+  const r = await fetch('/api/config/backup');
+  const blob = await r.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'osmo-config.json';
+  a.click();
+}
+async function doRestore() {
+  const f = document.getElementById('restore-file').files[0];
+  if (!f) { toast('请先选择 .json 文件'); return; }
+  const r = await fetch('/api/config/restore', { method: 'POST', body: f });
+  if (r.ok) toast('配置已导入');
+  else toast('导入失败：' + r.status);
+}
+
+/* ---- 启动 ---- */
+async function init() {
+  buildNav();
+  buildOsd();
+  buildChmap();
+  try {
+    await Promise.all([loadOsd(), loadProtocol(), loadChmap()]);
+  } catch (e) { /* ignore */ }
+  pollStatus();
+  setInterval(pollStatus, 2000);
+}
+init();
+</script>
+</body>
+</html>
