@@ -99,6 +99,12 @@ void channel_map_set_bindings(const channel_binding_t bindings[CHAN_FUNC_COUNT])
 
 void channel_map_feed(const uint16_t ch[16]) {
     static bool s_last[CHAN_FUNC_COUNT] = { false };
+    /* 是否已建立基准。开机第一次读到某个功能的通道时**只记录状态、不触发** ——
+     * s_last 初值全是 false，若不设这道闸，凡是「当前值恰好落在触发范围内」的功能
+     * 都会被判成一次上升沿，在开机瞬间误触发一遍：映射了关机就把相机关了、
+     * 映射了对频就进对频（还会关 WiFi）、映射了快门就会进 15 秒唤醒信标模式
+     * 把广播占住，相机因此迟迟连不上。*/
+    static bool s_primed[CHAN_FUNC_COUNT] = { false };
 
     memcpy(s_last_channels, ch, sizeof(s_last_channels));
 
@@ -109,15 +115,24 @@ void channel_map_feed(const uint16_t ch[16]) {
         const channel_binding_t *bind = &b[f];
         if (bind->channel == 0 || (bind->min == 0 && bind->max == 0)) {
             s_last[f] = false;
+            s_primed[f] = false;   /* 取消分配后再重新分配，要重新建立基准 */
             continue;
         }
         if (bind->channel > 16) {
             s_last[f] = false;
+            s_primed[f] = false;
             continue;
         }
 
         uint16_t v = ch[bind->channel - 1];
         bool active = (v >= bind->min && v <= bind->max);
+
+        if (!s_primed[f]) {
+            s_primed[f] = true;
+            s_last[f] = active;
+            continue;
+        }
+
         bool rising = active && !s_last[f];
         s_last[f] = active;
 
