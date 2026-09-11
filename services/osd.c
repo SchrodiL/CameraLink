@@ -323,7 +323,7 @@ static void compose_item(osd_item_t item, const camera_state_t *st, char *out)
 
         char tmp[32];
         /* 速度图标(0x70) + 速度，海拔图标(0x7F) + 海拔 */
-        snprintf(tmp, sizeof(tmp), "%c%u.%u %c%um",
+        snprintf(tmp, sizeof(tmp), "%c%u.%u %c%uM",
                  (char)MSP_OSD_SYM_SPEED, spd_int, spd_frac,
                  (char)MSP_OSD_SYM_ALTITUDE, (unsigned)alt);
         msp_osd_sanitize(out, tmp, OSD_CUSTOM_MSG_MAX_LEN);
@@ -495,7 +495,7 @@ static void compose_item(osd_item_t item, const camera_state_t *st, char *out)
                 snprintf(tmp, sizeof(tmp), "%s %uP", st->name, (unsigned)st->remain_photos);
             } else {
                 unsigned min = (unsigned)(st->remain_time_s / 60);
-                snprintf(tmp, sizeof(tmp), "%s %um", st->name, min);
+                snprintf(tmp, sizeof(tmp), "%s %uM", st->name, min);
             }
         } else {
             unsigned gb = (unsigned)(st->remain_capacity_mb / 1024);

@@ -247,15 +247,24 @@ static inline bool msp_osd_sym_ok(unsigned char c)
  * MAX7456 类 OSD 字体只有 256 个字形：0x20..0x7E 是普通文本，
  * 0x00..0x1F 与 0x7F..0xFF 是特殊图标（电池/GPS/箭头等），
  * 其它（中文/非 ASCII，含 UTF-8 多字节）无法显示。
+ *
+ * **小写字母一律转成大写**：该字体的 0x61..0x7A 区间并非完整的字母表，
+ * 部分字形被替换成了符号——例如 'f' 是箭头、'm' 也是箭头。曾经因为
+ * "%um" 里的单位用了小写 m，OSD 上「8m」显示成了「8↗」。在唯一汇聚点
+ * 统一转换，比要求每个调用方自己记得转大写可靠得多。
+ *
  * 不能显示的字符一律替换成空格，避免 OSD 出现乱码图标；唯一例外是
- * 本模块显式用到的图标字节（电池 0x90..0x97、卫星 0x1E、海拔 0x7F），
- * 见 msp_osd_sym_ok()。
+ * 本模块显式用到的图标字节（电池 0x90..0x97、卫星 0x1E、海拔 0x7F、
+ * 经纬度 0x89/0x98），见 msp_osd_sym_ok()。
  * 返回写入的字符数（不含结尾 NUL）。dst 需至少 max_len+1 字节。 */
 static inline int msp_osd_sanitize(char *dst, const char *src, int max_len)
 {
     int i = 0;
     for (; i < max_len && src[i] != '\0'; i++) {
         unsigned char c = (unsigned char)src[i];
+        if (c >= 'a' && c <= 'z') {
+            c = (unsigned char)(c - 'a' + 'A');
+        }
         dst[i] = msp_osd_sym_ok(c) ? (char)c : ' ';
     }
     dst[i] = '\0';
