@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Read(//c/esp/v6.0/esp-idf/**)",
-      "Read(//c/esp/v6.0/esp-idf/tools/**)",
-      "Read(//c/Users/34541/.espressif/**)"
-    ]
-  }
-}

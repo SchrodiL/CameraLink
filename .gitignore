@@ -4,3 +4,6 @@
 /build
 /managed_components
 /sdkconfig.old
+
+# Claude Code 本机配置（含本机绝对路径，不随仓库分发）
+.claude/
