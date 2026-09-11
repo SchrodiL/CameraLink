@@ -295,12 +295,18 @@ static esp_ble_adv_params_t s_adv_params = {
     .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
 };
 
+/* 相机名扫描参数。占空比刻意压低：**扫描和广播共用同一个射频控制器**，
+ * 原来 50ms 间隔 / 30ms 窗口 = 60% 占空比，广播只剩 40% 的时间能发，
+ * 相机发现本机自然就慢。现在 160ms / 30ms ≈ 19%，广播随时能发出去。
+ *
+ * 这个扫描只用来学「型号」（OSD 上显示设备名用），唤醒 payload 已改由相机
+ * 在连接时通过 type 0x07 主动提供，所以学得慢一点没有影响。 */
 static esp_ble_scan_params_t s_scan_params = {
     .scan_type = BLE_SCAN_TYPE_ACTIVE,
     .own_addr_type = BLE_ADDR_TYPE_PUBLIC,
     .scan_filter_policy = BLE_SCAN_FILTER_ALLOW_ALL,
-    .scan_interval = 0x50,
-    .scan_window = 0x30,
+    .scan_interval = 0x100,   /* 160 ms */
+    .scan_window = 0x30,      /*  30 ms → 占空比 19% */
     .scan_duplicate = BLE_SCAN_DUPLICATE_DISABLE,
 };
 
@@ -537,6 +543,13 @@ static void handle_scan_result(esp_ble_gap_cb_param_t *param) {    if (!s_payloa
 
     ESP_LOGI(TAG, "Auto-learned camera '%s' (wake '%.6s') from '%.*s'",
              s_model, s_wake_payload, (int)len, (const char *)name);
+
+    /* 学到就立刻停扫。扫描和广播共用同一个射频，继续扫会让相机迟迟发现不了本机；
+     * 原先要一直扫到相机连上（CONNECT_EVT）才停，那几秒正是连接最卡的时段。 */
+    if (s_scan_active) {
+        esp_ble_gap_stop_scanning();
+        s_scan_active = false;
+    }
 }
 
 /* Start a one-shot scan to discover the camera name (only when payload is still default). */
