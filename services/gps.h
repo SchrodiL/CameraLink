@@ -56,6 +56,23 @@ typedef struct {
     uint8_t Num_Satellites;   // Number of Visible Satellites
                               // 可见卫星数量
 
+    // Accuracy (from UBX-NAV-PVT; 0 = unknown)
+    // 定位精度（来自 UBX-NAV-PVT，米制 1σ；0 表示未知）
+    // UBX 本身就带这些字段，比 NMEA 的 HDOP 更直接，用于双源融合时给本地源定权重。
+    double H_Acc_M;           // Horizontal accuracy (m)
+                              // 水平精度（米）
+    double V_Acc_M;           // Vertical accuracy (m)
+                              // 垂直精度（米）
+    double S_Acc_Mps;         // Speed accuracy (m/s)
+                              // 速度精度（米/秒）
+    double PDOP;              // Position dilution of precision (unitless)
+                              // 位置精度因子（无量纲）
+
+    // 本帧的采样时刻（毫秒，xTaskGetTickCount 时钟）。
+    // 融合模块用它判断本地源是否还在更新——GNSS 挂掉时旧值会一直留在结构体里，
+    // 只有时间戳能识别出「数据已经不新鲜了」。
+    uint32_t Sample_Ms;
+
     // Calculated Velocity Components
     // 计算后的速度分量
     double Velocity_North;    // Northward Velocity (m/s)
@@ -91,12 +108,8 @@ bool is_gps_connected(void);
 
 bool is_current_gps_data_valid(void);
 
-/* 返回最新解析的 GPS 数据（只读指针；由 rx_task_GPS 写入）。 */
-const GPS_Data_t *gps_logic_get_data(void);
-
-/* 数据就绪回调：收到有效定位数据时由 rx_task_GPS 调用。DJI 后端挂接此回调
- * 把 GPS 数据打包推送相机；insta360 后端不消费。 */
-typedef void (*gps_data_ready_cb_t)(void);
-void gps_set_data_ready_cb(gps_data_ready_cb_t cb);
+/* 取一份**一致的**快照（加锁拷贝）。跨任务读取必须走这里 ——
+ * rx_task_GPS 随时在改写内部结构体，拿裸指针读会撕裂。 */
+bool gps_logic_snapshot(GPS_Data_t *out);
 
 #endif

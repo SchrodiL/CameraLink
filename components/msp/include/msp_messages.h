@@ -76,9 +76,12 @@ typedef struct {
     uint8_t  num_sat;       /* 卫星数 */
     int32_t  lat;           /* 纬度，1e-7 度 */
     int32_t  lon;           /* 经度，1e-7 度 */
-    uint16_t alt_m;         /* 海拔，米 */
+    uint16_t alt_m;         /* 海拔（MSL），米 */
     uint16_t speed_cms;     /* 地速，cm/s */
     uint16_t course_degx10; /* 航向，0.1 度 */
+    /* PDOP ×0.01。**可选字段**：Betaflight 自 MSP API 1.44 起才在 MSP_RAW_GPS
+     * 末尾追加它，更早的固件只发前 16 字节。为 0 表示飞控没给（按星数估算）。 */
+    uint16_t pdop_x100;
 } msp_raw_gps_t;
 
 /* --- decode helpers (return false if payload too short) --- */
@@ -157,7 +160,44 @@ static inline bool msp_decode_raw_gps(const msp_packet_t *p, msp_raw_gps_t *o) {
     o->alt_m         = msp_rd_u16(p->payload + 10);
     o->speed_cms     = msp_rd_u16(p->payload + 12);
     o->course_degx10 = msp_rd_u16(p->payload + 14);
+    /* PDOP 是可选尾巴：只有 MSP API >= 1.44 的固件才发，老固件到 14 字节就结束。
+     * 所以这里按实际长度判断，不能无条件读——越界读到的是帧尾/垃圾。 */
+    o->pdop_x100     = (p->size >= 18) ? msp_rd_u16(p->payload + 16) : 0;
     return true;
+}
+
+/*
+ * MSP_SET_RAW_GPS 的载荷（14 字节）—— 把本机的 GPS 喂给飞控。
+ *
+ * 字段顺序与单位来自 Betaflight 的 msp.c：
+ *   fix(1) numSat(1) lat(4) lon(4) alt(2) speed(2)
+ * 注意 **alt 的单位是「米」**（飞控读到后自己 ×100 转 cm），speed 是 cm/s。
+ * 飞控侧需要配成 gps_provider = MSP 才会采用；此时 gps.c 的 GPS_MSP 分支会
+ * 把数据直接送进 onGpsNewData()，即当作真正的 GPS 用，不只是显示。
+ */
+static inline uint16_t msp_build_set_raw_gps(uint8_t *dst,
+                                             uint8_t  fix_type,
+                                             uint8_t  num_sat,
+                                             int32_t  lat_1e7,
+                                             int32_t  lon_1e7,
+                                             uint16_t alt_m,
+                                             uint16_t speed_cms)
+{
+    dst[0]  = fix_type;
+    dst[1]  = num_sat;
+    dst[2]  = (uint8_t)(lat_1e7);
+    dst[3]  = (uint8_t)(lat_1e7 >> 8);
+    dst[4]  = (uint8_t)(lat_1e7 >> 16);
+    dst[5]  = (uint8_t)(lat_1e7 >> 24);
+    dst[6]  = (uint8_t)(lon_1e7);
+    dst[7]  = (uint8_t)(lon_1e7 >> 8);
+    dst[8]  = (uint8_t)(lon_1e7 >> 16);
+    dst[9]  = (uint8_t)(lon_1e7 >> 24);
+    dst[10] = (uint8_t)(alt_m);
+    dst[11] = (uint8_t)(alt_m >> 8);
+    dst[12] = (uint8_t)(speed_cms);
+    dst[13] = (uint8_t)(speed_cms >> 8);
+    return 14;
 }
 
 /* Decode MSP_RC payload: 16 × uint16 channel values (1000..2000 us). */

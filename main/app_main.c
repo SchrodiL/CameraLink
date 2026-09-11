@@ -9,6 +9,7 @@
 #include "camera_backend.h"
 #include "controller.h"
 #include "gps.h"
+#include "gps_fusion.h"
 #include "key.h"
 #include "light.h"
 #include "osd.h"
@@ -45,6 +46,12 @@ void app_main(void) {
 
     /* GPS 任务在两种协议下都启动（insta360 模式也读取 GPS 供 OSD 显示） */
     initSendGpsDataToCameraTask();
+
+    /* GPS 双源融合（本地 GNSS + 飞控 MSP）。要放在 GPS 任务之后 —— 它读本地快照。 */
+    if (gps_fusion_init() != 0) {
+        ESP_LOGE(TAG, "gps_fusion init failed");
+        return;
+    }
 
     /* 统一拉起 BLE 栈（controller + bluedroid + 统一 GAP 回调），只做一次 */
     /* Bring up the BLE stack once (controller + bluedroid + unified GAP callback). */

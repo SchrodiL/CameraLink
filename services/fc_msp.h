@@ -29,4 +29,22 @@ int fc_msp_init(void);
  * 下一轮 OSD 刷新会重发，不影响画面。 */
 void fc_msp_send_osd_text(uint8_t idx, const char *text);
 
+/*
+ * 飞控 GPS 的方向。做成**一个二选一开关**而不是两个独立开关，因为飞控侧
+ * gps_provider 只能选一种，两者物理上互斥：都开的话，我们喂进去的数据会被
+ * 飞控从 MSP_RAW_GPS 回读回来，形成自反馈。
+ *
+ *   READ  —— 用 MSP_RAW_GPS 读飞控的，参与融合（飞控自己接了 GPS）
+ *   WRITE —— 把融合结果用 MSP_SET_RAW_GPS 喂给飞控（飞控没接 GPS，
+ *            对应飞控侧 gps_provider = MSP）
+ */
+typedef enum {
+    FC_MSP_GPS_READ = 0,
+    FC_MSP_GPS_WRITE,
+} fc_msp_gps_dir_t;
+
+/* 设置/读取 GPS 方向。设置会持久化到 NVS 并立即生效。 */
+void fc_msp_set_gps_dir(fc_msp_gps_dir_t dir);
+fc_msp_gps_dir_t fc_msp_get_gps_dir(void);
+
 #endif /* FC_MSP_H */

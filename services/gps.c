@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/portmacro.h"
 
 #include "gps.h"
 
@@ -18,6 +19,10 @@
 // Initialize GPS data structure
 // 初始化 GPS 数据结构
 static GPS_Data_t GPS_Data;
+
+/* 保护 GPS_Data：rx_task_GPS 写、融合任务读。不加锁的话读方可能看到
+ * 一半新一半旧的坐标（十几个字段是非原子写入），融合出来的位置会瞬间跳变。 */
+static portMUX_TYPE s_gps_data_lock = portMUX_INITIALIZER_UNLOCKED;
 
 // Counter for consecutive invalid GPS readings
 // GPS连续无效次数计数器
@@ -101,15 +106,19 @@ bool is_current_gps_data_valid(void) {
     return false;
 }
 
-const GPS_Data_t *gps_logic_get_data(void) {
-    return &GPS_Data;
-}
-
-/* 数据就绪回调（供 DJI 后端挂接）。 */
-static gps_data_ready_cb_t s_data_ready_cb = NULL;
-
-void gps_set_data_ready_cb(gps_data_ready_cb_t cb) {
-    s_data_ready_cb = cb;
+/* 取一份**一致的**快照（加锁拷贝）。
+ *
+ * 跨任务读取必须走这里 —— 曾经有个 gps_logic_get_data() 直接返回裸指针，
+ * 而 rx_task_GPS 随时在改写那十几个字段，读方会看到半新半旧的坐标。
+ * 现在只保留这个安全入口。 */
+bool gps_logic_snapshot(GPS_Data_t *out) {
+    if (out == NULL) {
+        return false;
+    }
+    taskENTER_CRITICAL(&s_gps_data_lock);
+    memcpy(out, &GPS_Data, sizeof(*out));
+    taskEXIT_CRITICAL(&s_gps_data_lock);
+    return true;
 }
 
 /* ==================================================================== */
@@ -444,7 +453,15 @@ static void ubx_parse_pvt(const uint8_t *p, uint16_t len) {
 
     int32_t lat = ubx_le32(&p[28]);   // 1e-7 度
     int32_t lon = ubx_le32(&p[24]);   // 1e-7 度
-    int32_t height_mm = ubx_le32(&p[32]);
+    /* 高度取 hMSL（偏移 36），**不是**椭球高（偏移 32）。
+     * 飞控经 MSP 给的 alt 也是 hMSL（Betaflight: gpsSol.llh.altCm = ubxNavPvt.hMSL/10），
+     * 两者基准一致才谈得上融合；对 OSD 显示和大疆推送来说 hMSL 本来也更符合预期。 */
+    int32_t height_mm = ubx_le32(&p[36]);
+    /* 精度字段：UBX 自带，之前一直没读。米制 1σ，融合时用来给本地源定权重。 */
+    uint32_t h_acc_mm   = (uint32_t)ubx_le32(&p[40]);
+    uint32_t v_acc_mm   = (uint32_t)ubx_le32(&p[44]);
+    uint32_t s_acc_mms  = (uint32_t)ubx_le32(&p[68]);
+    uint16_t pdop_x100  = ubx_le16(&p[76]);   // ×0.01
     int32_t vel_n = ubx_le32(&p[48]); // mm/s
     int32_t vel_e = ubx_le32(&p[52]); // mm/s
     int32_t vel_d = ubx_le32(&p[56]); // mm/s
@@ -453,6 +470,10 @@ static void ubx_parse_pvt(const uint8_t *p, uint16_t len) {
 
     uint8_t fix_type = p[20];
     uint8_t num_sv   = p[23];
+
+    /* 以下整块是 GPS_Data 的写更新 —— 加锁避免读方看到半新半旧的坐标。
+     * 锁内只有赋值和算术，没有日志/阻塞调用，不会长时间关中断。 */
+    taskENTER_CRITICAL(&s_gps_data_lock);
 
     GPS_Data.Year  = (uint8_t)(ubx_le16(&p[4]) - 2000);
     GPS_Data.Month = p[6];
@@ -476,6 +497,12 @@ static void ubx_parse_pvt(const uint8_t *p, uint16_t len) {
     GPS_Data.Course = heading * 1e-5;
 
     GPS_Data.Num_Satellites = num_sv;
+    GPS_Data.H_Acc_M   = h_acc_mm / 1000.0;
+    GPS_Data.V_Acc_M   = v_acc_mm / 1000.0;
+    GPS_Data.S_Acc_Mps = s_acc_mms / 1000.0;
+    GPS_Data.PDOP      = pdop_x100 * 0.01;
+    /* 采样时刻：融合模块据此判断本地源是否还在更新 */
+    GPS_Data.Sample_Ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 
     // 定位有效判定：3D 及以上视为有效（等价于 NMEA 路径 RMC+GGA 同时有效）
     bool has_fix = (fix_type >= 3);
@@ -486,6 +513,8 @@ static void ubx_parse_pvt(const uint8_t *p, uint16_t len) {
     GPS_Data.RMC_Longitude = GPS_Data.Longitude;
     GPS_Data.GGA_Latitude = GPS_Data.Latitude;
     GPS_Data.GGA_Longitude = GPS_Data.Longitude;
+
+    taskEXIT_CRITICAL(&s_gps_data_lock);
 
     if (has_fix) {
         gps_invalid_count = 0;
@@ -610,10 +639,6 @@ static void rx_task_GPS(void *arg)
             /* 纯 UBX 路径（对齐 BF：只支持 u-blox） */
             for (int i = 0; i < rxBytes; i++) {
                 ubx_feed(data[i]);
-            }
-
-            if (s_data_ready_cb != NULL && is_current_gps_data_valid()) {
-                s_data_ready_cb();
             }
         }
         // 如果没有数据读取，休眠一小段时间，避免任务占用 CPU

@@ -52,12 +52,15 @@ typedef struct {
     uint32_t rec_seconds;         /* 录制已持续秒数（未录制时为 0） */
     uint8_t  mode;                /* 相机模式（DJI 枚举值；insta360 时为 0） */
 
-    bool     gps_found;           /* GPS 模块有数据（is_gps_found） */
-    bool     gps_connected;       /* GPS 模块在发送 UBX 数据（连接已建立，与 fix 无关） */
-    bool     gps_valid;           /* 定位有效（RMC+GGA 均有效） */
-    uint8_t  satellites;          /* 卫星数 */
+    /* GPS：以下字段来自**融合后**的结果（本地 GNSS + 飞控 MSP 双源），
+     * 不再是本地模块的原始值。 */
+    bool     gps_found;           /* 有任一来源给出了定位（LED 用） */
+    bool     gps_connected;       /* 有任一来源可用（OSD 卫星项据此决定显示卫星数还是 NO GPS） */
+    bool     gps_valid;           /* 融合结果有效（3D 定位且通过准入门槛） */
+    uint8_t  gps_source;          /* gps_src_t：0 无 / 1 本地 / 2 飞控 / 3 融合 */
+    uint8_t  satellites;          /* 卫星数（两源取最大） */
     double   speed_ms;            /* 地速 (m/s) */
-    double   altitude_m;          /* 海拔 (m) */
+    double   altitude_m;          /* 海拔 (m，hMSL) */
     double   lat;                 /* 纬度 (度) */
     double   lon;                 /* 经度 (度) */
 

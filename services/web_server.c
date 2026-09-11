@@ -30,6 +30,8 @@
 #include "pairing.h"
 #include "channel_map.h"
 #include "light.h"
+#include "fc_msp.h"
+#include "gps_fusion.h"
 
 static const char *TAG = "WEB";
 
@@ -99,15 +101,23 @@ static esp_err_t status_handler(httpd_req_t *req) {
     cJSON_AddBoolToObject(root, "pairing", pairing_is_active());
     cJSON_AddBoolToObject(root, "wifi_on", s_wifi_on);
     cJSON_AddNumberToObject(root, "wifi_auto_delay", s_auto_delay);
+    /* 飞控 GPS 的方向档位（0=读飞控 / 1=向飞控输出） */
+    cJSON_AddNumberToObject(root, "gps_dir", (int)fc_msp_get_gps_dir());
 
     cJSON *gps = cJSON_CreateObject();
     cJSON_AddBoolToObject(gps, "connected", st->gps_connected);
     cJSON_AddBoolToObject(gps, "valid", st->gps_valid);
+    cJSON_AddNumberToObject(gps, "source", st->gps_source);
     cJSON_AddNumberToObject(gps, "satellites", st->satellites);
     cJSON_AddNumberToObject(gps, "speed_ms", st->speed_ms);
     cJSON_AddNumberToObject(gps, "altitude_m", st->altitude_m);
     cJSON_AddNumberToObject(gps, "lat", st->lat);
     cJSON_AddNumberToObject(gps, "lon", st->lon);
+    /* 融合的精度信息：便于判断"现在用的是哪个来源、准不准" */
+    gps_fused_t fused;
+    gps_fusion_get(&fused);
+    cJSON_AddNumberToObject(gps, "h_acc_m", fused.h_acc_m);
+    cJSON_AddNumberToObject(gps, "pdop", fused.pdop);
     cJSON_AddItemToObject(root, "gps", gps);
 
     cJSON *chans = cJSON_CreateArray();
@@ -501,6 +511,24 @@ static void dns_server_task(void *arg) {
     close(sock);
 }
 
+/* PUT /api/gps-dir —— 切换飞控 GPS 的方向（二选一滑块开关）。
+ * 0 = 读飞控 GPS（飞控自己接了 GPS）；1 = 向飞控输出 GPS（飞控没接，gps_provider=MSP）。
+ * 两者物理互斥：都开会让我们喂进去的数据被飞控回读回来。 */
+static esp_err_t gps_dir_put_handler(httpd_req_t *req) {
+    cJSON *body = read_json_body(req);
+    if (!body) { httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json"); return ESP_FAIL; }
+
+    cJSON *dir = cJSON_GetObjectItem(body, "dir");
+    if (cJSON_IsNumber(dir)) {
+        fc_msp_set_gps_dir((dir->valueint == 1) ? FC_MSP_GPS_WRITE : FC_MSP_GPS_READ);
+    }
+    cJSON_Delete(body);
+
+    cJSON *ok = cJSON_CreateObject();
+    cJSON_AddNumberToObject(ok, "dir", (int)fc_msp_get_gps_dir());
+    return send_json(req, ok);
+}
+
 /* POST /api/factory-reset —— 恢复默认设置：清空全部设置后重启。
  *
  * 直接擦掉整个 NVS 分区：6 个命名空间（协议 / 对频 / 通道映射 / insta360 /
@@ -549,6 +577,7 @@ static void register_handlers(httpd_handle_t server) {
     URI("/api/config/restore",   restore_handler,         HTTP_POST);
     URI("/api/wifi",             wifi_get_handler,        HTTP_GET);
     URI("/api/wifi",             wifi_put_handler,        HTTP_PUT);
+    URI("/api/gps-dir",          gps_dir_put_handler,     HTTP_PUT);
     URI("/api/factory-reset",    factory_reset_handler,   HTTP_POST);
     URI("/*",                    captive_handler,         HTTP_GET);
 

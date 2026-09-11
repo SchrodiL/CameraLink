@@ -7,9 +7,7 @@
 #include "camera_backend.h"
 #include "pairing.h"
 #include "gps.h"
-
-/* 节 (knots) -> 米/秒 的换算系数 */
-#define KNOTS_TO_MPS 0.514444444
+#include "gps_fusion.h"
 
 /* 唯一一份缓存。仅由 camera_state_refresh() 写入。 */
 static camera_state_t s_state;
@@ -57,18 +55,25 @@ void camera_state_refresh(void)
         }
     }
 
-    /* GPS：两种协议共用同一份解析结果。 */
-    s_state.gps_found = is_gps_found();
-    s_state.gps_connected = is_gps_connected();
-    const GPS_Data_t *gps = gps_logic_get_data();
-    if (gps != NULL) {
-        s_state.gps_valid = (gps->Status == 1);
-        s_state.satellites = gps->Num_Satellites;
-        s_state.speed_ms = gps->Speed_knots * KNOTS_TO_MPS;
-        s_state.altitude_m = gps->Altitude;
-        s_state.lat = gps->Latitude;
-        s_state.lon = gps->Longitude;
-    }
+    /* GPS：用**融合后**的结果（本地 GNSS + 飞控 MSP 双源）。
+     * 只有一个来源有定位时也能正常显示。 */
+    gps_fused_t g;
+    gps_fusion_get(&g);
+
+    s_state.gps_valid   = g.valid;
+    s_state.satellites  = g.num_sat;
+    s_state.speed_ms    = g.speed_ms;
+    s_state.altitude_m  = g.alt_m;
+    s_state.lat         = g.lat;
+    s_state.lon         = g.lon;
+    s_state.gps_source  = (uint8_t)g.source;
+
+    /* 这两个原本只描述**本地模块**，现在放宽成「有任一来源可用」：
+     *   gps_connected —— OSD 卫星项据此决定显示卫星数还是 NO GPS
+     *   gps_found     —— LED 据此决定紫/绿（有定位）
+     * 否则「只有飞控有定位」时 OSD 会显示 NO GPS、LED 也显示无定位，与实际不符。 */
+    s_state.gps_connected = is_gps_connected() || g.valid;
+    s_state.gps_found     = is_gps_found()     || g.valid;
 }
 
 const camera_state_t *camera_state_get(void)

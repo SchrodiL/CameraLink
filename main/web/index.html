@@ -216,6 +216,23 @@ th { color: var(--muted); font-weight: 500; }
       <div class="kv" id="status-kv"></div>
     </div>
     <div class="card">
+      <h2>GPS</h2>
+      <div class="row">
+        <label>飞控 GPS</label>
+        <div class="seg" id="gps-dir-seg" data-sel="0">
+          <span class="seg-thumb"></span>
+          <button class="seg-btn">读飞控</button>
+          <button class="seg-btn">送飞控</button>
+        </div>
+      </div>
+      <p style="color:var(--muted);margin:0">
+        「读飞控」= 飞控自己接了 GPS，读回来与本机定位融合；
+        「送飞控」= 飞控没接 GPS，把本机定位喂给它（飞控需设
+        <span class="mono">gps_provider = MSP</span>）。
+        两者互斥，不能同时开。
+      </p>
+    </div>
+    <div class="card">
       <h2>RC 通道实时值</h2>
       <div class="ch-bars" id="ch-bars"></div>
     </div>
@@ -395,8 +412,14 @@ async function pollStatus() {
     const kv = document.getElementById('status-kv');
     const proto = s.protocol === 1 ? 'Insta360' : 'DJI';
     protoSync(s);
+    renderGpsDir(s.gps_dir);
+
+    /* 当前定位来自哪个源、精度多少 —— 融合是否生效一眼可见 */
+    const gsrc = ['无', '本地', '飞控', '融合'][s.gps.source] || '无';
+    const gacc = (s.gps.valid && s.gps.h_acc_m > 0) ? ' ±' + s.gps.h_acc_m.toFixed(1) + 'm' : '';
     kv.innerHTML = [
       ['协议', proto + (s.paired ? ' (已对频)' : ' (未对频)')],
+      ['GPS 来源', gsrc + gacc],
       ['卫星数', s.gps.satellites],
       ['GPS 定位', s.gps.valid ? '有效' : (s.gps.connected ? '搜星中' : '未连接')],
       ['纬度', s.gps.valid ? s.gps.lat.toFixed(6) : '--'],
@@ -528,6 +551,17 @@ async function saveWifi() {
 }
 async function wifiOn() { await jsend('PUT', '/api/wifi', { wifi_on: true }); renderWifi(true); toast('WiFi 已打开'); }
 async function wifiOff() { await jsend('PUT', '/api/wifi', { wifi_on: false }); renderWifi(false); toast('WiFi 已关闭'); }
+
+/* ---- GPS 方向（二选一滑块）---- */
+/* 0 = 读飞控 GPS（飞控自己接了）；1 = 把本机定位输出给飞控（飞控 gps_provider=MSP）*/
+function renderGpsDir(dir) {
+  segSet('gps-dir-seg', dir ? 1 : 0);
+}
+async function setGpsDir(v) {
+  renderGpsDir(v);              /* 立即反映，不必等下一轮轮询（与 WiFi 一致） */
+  await jsend('PUT', '/api/gps-dir', { dir: v });
+  toast(v ? '本机 GPS 将输出给飞控' : '将读取飞控的 GPS');
+}
 
 /* ---- 通道映射（Betaflight Modes 风格）---- */
 const CM_MIN = 1000, CM_MAX = 2000;              /* RC 行程范围 (us) */
@@ -917,9 +951,10 @@ async function init() {
   buildOsd();
   buildChmap();
 
-  /* 两个二选一滑块：点另一档即生效，不需要额外的确认按钮 */
+  /* 三个二选一滑块：点另一档即生效，不需要额外的确认按钮 */
   segBind('proto-seg', setProtocolTo);
   segBind('wifi-seg', (v) => { if (v) wifiOn(); else wifiOff(); });
+  segBind('gps-dir-seg', setGpsDir);
 
   try {
     await Promise.all([loadOsd(), loadProtocol(), loadChmap()]);

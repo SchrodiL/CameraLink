@@ -4,10 +4,11 @@
 #define DJI_GPS_H
 
 /*
- * dji_gps.h — 把 GPS 服务解析出的 GPS_Data_t 打包成 DJI 0x0017 帧推送相机。
+ * dji_gps.h — 把**融合后**的 GPS 结果打包成 DJI 0x0017 帧推送相机。
  *
- * GPS 解析在 services/gps（协议无关）；DJI 后端通过 gps_set_data_ready_cb 挂接
- * 本模块，在有有效定位且 DJI 已连接时推送。insta360 后端不消费 GPS 推送。
+ * GPS 解析在 services/gps（协议无关），双源融合在 services/gps_fusion。
+ * DJI 后端通过 gps_fusion_set_ready_cb 挂接本模块 —— 挂在**融合**上而不是
+ * 本地 GNSS 的 ready 回调上，这样「只有飞控有定位」时也推得出去。
  */
 
 void dji_gps_init(void);

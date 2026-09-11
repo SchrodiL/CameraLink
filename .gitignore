@@ -7,3 +7,6 @@
 
 # Claude Code 本机配置（含本机绝对路径，不随仓库分发）
 .claude/
+
+# 主机构建产物（test/ 下的编译结果）
+test/gps_fusion/test_gps_fusion
