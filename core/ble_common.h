@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+
 #ifndef BLE_COMMON_H
 #define BLE_COMMON_H
 

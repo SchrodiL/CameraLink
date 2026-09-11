@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+
 #include <string.h>
 #include "esp_log.h"
 #include "esp_bt.h"

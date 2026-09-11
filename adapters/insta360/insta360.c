@@ -1,4 +1,6 @@
-/*
+/* SPDX-License-Identifier: MIT
+ * Copyright (c) 2025 Cameron Coward (insta360-m5stick-remote)
+ *
  * insta360 remote logic (BLE GATT server).
  * Ported from the insta360 M5StickC remote project:
  *   https://github.com/marcelpallares/insta360-m5stick-remote

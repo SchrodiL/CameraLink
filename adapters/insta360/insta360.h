@@ -1,3 +1,7 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (c) 2025 Cameron Coward (insta360-m5stick-remote)
+ */
+
 #ifndef INSTA360_H
 #define INSTA360_H
 
