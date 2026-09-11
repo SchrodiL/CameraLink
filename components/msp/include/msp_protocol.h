@@ -1,8 +1,8 @@
 /*
  * msp_protocol.h — MSP message IDs.
  *
- * A subset of Betaflight's src/main/msp/msp_protocol.h, kept here for the
- * messages most commonly used by a ground-station / companion host.
+ * MSP is the de-facto standard flight-controller serial protocol; listed here
+ * are the message IDs most commonly used by a ground station / companion host.
  * The codec itself is message-agnostic: any uint16_t command id works, so
  * add more defines below as needed.
  */
@@ -66,7 +66,7 @@
 
 /* ------------------------------------------------------------------ */
 /* MSPv2 (MSP2) commands — 0x3000+, MSPv2 native frames only.          */
-/* 自定义 OSD 文本：参考 Betaflight PR #14097 / #13050。               */
+/* 自定义 OSD 文本：MSPv2 扩展消息，需飞控固件支持。                     */
 /* ------------------------------------------------------------------ */
 #define MSP2_SET_TEXT                0x3007  /* in:  set a named text field */
 

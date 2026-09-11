@@ -1,8 +1,7 @@
 /*
  * msp_codec.h — MSP / MSPv2 framing: CRC, encoder and byte-at-a-time decoder.
  *
- * Wire format (all multi-byte integers little-endian), matching Betaflight's
- * src/main/msp/msp_serial.c:
+ * Wire format (all multi-byte integers little-endian):
  *
  *   MSPv1:         '$' 'M' <dir> size(1) cmd(1) [jumbo_size(2)] payload... xor(1)
  *                  checksum = XOR of (size, cmd, [jumbo], payload)

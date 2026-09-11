@@ -32,7 +32,7 @@ typedef struct {
 } msp_fc_version_t;
 
 typedef struct {
-    int16_t acc[3];    /* x,y,z — 512 == 1 g in Betaflight */
+    int16_t acc[3];    /* x,y,z — 512 == 1 g（MSP 约定） */
     int16_t gyro[3];   /* x,y,z — deg/s (scaled) */
     int16_t mag[3];    /* x,y,z */
 } msp_raw_imu_t;
@@ -217,20 +217,18 @@ static inline uint16_t msp_build_custom_msg(uint8_t *dst, uint8_t msg_idx, const
                               OSD_CUSTOM_MSG_MAX_LEN);
 }
 
-/* mwosd / MAX7456 OSD 字体里的电池图标字形字节。
- * 对应 Betaflight osd_symbols.h 的 SYM_BATT_FULL..EMPTY / SYM_MAIN_BATT。
+/* MAX7456 类 OSD 字体的电池图标字形字节（各家 MSP OSD 实现通用的字形表）。
  * 0x90..0x96 是电量格图标（满→空），0x97 是主电池图标。 */
 #define MSP_OSD_SYM_BATT_FULL   0x90
 #define MSP_OSD_SYM_BATT_EMPTY  0x96
 #define MSP_OSD_SYM_MAIN_BATT   0x97
 #define MSP_OSD_SYM_REC         0x09   /* 录像(REC)图标 */
 
-/* 经纬度标志字形（Betaflight osd_symbols.h 的 SYM_LAT / SYM_LON）。 */
+/* 经纬度标志字形。 */
 #define MSP_OSD_SYM_LAT         0x89
 #define MSP_OSD_SYM_LON         0x98
 
 /* GPS / 速度 / 海拔图标字形字节。
- * 对应 Betaflight osd_symbols.h 的 SYM_SAT_L / SYM_SPEED / SYM_ALTITUDE。
  * 注意 0x70 落在可打印 ASCII 区间（原 'p' 位），sanitize 天然放行。 */
 #define MSP_OSD_SYM_SAT         0x1E
 #define MSP_OSD_SYM_SPEED       0x70
@@ -246,7 +244,7 @@ static inline bool msp_osd_sym_ok(unsigned char c)
 }
 
 /* 把文本过滤成 OSD 字体能显示的字形。
- * MAX7456 / mwosd 字体只有 256 个字形：0x20..0x7E 是普通文本，
+ * MAX7456 类 OSD 字体只有 256 个字形：0x20..0x7E 是普通文本，
  * 0x00..0x1F 与 0x7F..0xFF 是特殊图标（电池/GPS/箭头等），
  * 其它（中文/非 ASCII，含 UTF-8 多字节）无法显示。
  * 不能显示的字符一律替换成空格，避免 OSD 出现乱码图标；唯一例外是

@@ -339,7 +339,7 @@ static int gps_autobaud(void) {
 }
 
 /* 配置 GNSS 星座：默认开北斗，同时开 GPS/GLONASS/Galileo/QZSS/SBAS，越多越好。
- * 参考 Betaflight 的 GPS 自动配置（UBX-CFG-GNSS）。
+ * 用 u-blox 标准的 UBX-CFG-GNSS 命令；下面这组星座使能位是各家飞控的通用做法。
  * numTrkChHw 只读（写 0）；numTrkChUse=0 表示用最大可用通道。 */
 static void ubx_config_gnss(void) {
     uint8_t p[4 + 6 * 8] = {

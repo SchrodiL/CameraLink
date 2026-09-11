@@ -1,9 +1,8 @@
 /*
  * msp_codec.c — MSP / MSPv2 frame encoder and incremental decoder.
  *
- * Faithfully mirrors Betaflight's src/main/msp/msp_serial.c framing
- * (see the header for the exact wire layout), plus MSPv1 jumbo-frame
- * handling that Betaflight's own decoder omits.
+ * Implements the MSP / MSPv2 wire format (see the header for the exact
+ * layout), including MSPv1 jumbo-frame handling that many decoders omit.
  */
 #include "msp_codec.h"
 #include <string.h>
