@@ -12,6 +12,7 @@
 #include "key.h"
 #include "light.h"
 #include "osd.h"
+#include "fc_msp.h"
 #include "ble_common.h"
 #include "pairing.h"
 #include "channel_map.h"
@@ -76,8 +77,15 @@ void app_main(void) {
     /* 初始化按键逻辑 */
     key_logic_init();
 
-    /* 启动 MSP/OSD 任务，把相机状态写入飞控 OSD（两种协议都工作） */
-    /* Start MSP/OSD task to write camera state to the FC OSD (both protocols) */
+    /* MSP 链路（UART1）先起来：OSD 文本、RC 通道都靠它 */
+    /* MSP link first: OSD text and RC channels both go through it */
+    if (fc_msp_init() != 0) {
+        ESP_LOGE(TAG, "fc_msp init failed");
+        return;
+    }
+
+    /* 启动 OSD 任务，把相机状态写入飞控 OSD（两种协议都工作） */
+    /* Start OSD task to write camera state to the FC OSD (both protocols) */
     osd_logic_init();
 
     /* 通道映射 + WebUI（WiFi AP + HTTP） */

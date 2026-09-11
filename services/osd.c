@@ -14,15 +14,11 @@
 #include "camera_enums.h"
 #include "hardware_config.h"
 #include "osd_config.h"
-#include "channel_map.h"
-#include "msp_uart.h"
-#include "msp_protocol.h"
-#include "msp_messages.h"
+#include "fc_msp.h"          /* OSD 文本交给 MSP 链路去发 */
+#include "msp_protocol.h"    /* OSD_CUSTOM_MSG_* 常量 */
+#include "msp_messages.h"    /* msp_osd_sanitize */
 
 #define TAG "LOGIC_OSD"
-
-/* MSPv2 原生帧；MSP2_SET_TEXT 是 MSPv2-only 命令 */
-#define MSP_LINK_VERSION  MSP_V2_NATIVE
 
 /* OSD 文本写周期（毫秒）。取 500ms（2Hz）与相机的 2Hz 状态推送对齐——
  * 原先 1Hz 会让画面比相机状态慢一拍（最坏滞后 1 秒多）。 */
@@ -37,8 +33,6 @@
 
 /* 充电动画步进间隔（毫秒）：2Hz，每秒推进两格，7 格一轮约 3.5s。 */
 #define OSD_CHRG_MS       500
-
-static msp_host_t s_msp;
 
 /* 电量文字档位 → OSD 字符串；BATT_LABEL_NONE 返回 NULL（改用百分比显示）。 */
 static const char *batt_label_str(battery_label_t l)
@@ -529,25 +523,19 @@ static void compose_osd(const camera_state_t *st,
 }
 
 /* ------------------------------------------------------------------ */
-/* 把 4 条文本用 MSP2_SET_TEXT 发给飞控                                    */
+/* 把 4 条文本交给 MSP 链路的队列，由 fc_msp 的任务负责实际发送            */
 /* ------------------------------------------------------------------ */
 static void send_osd_msgs(char msgs[][OSD_CUSTOM_MSG_MAX_LEN + 1])
 {
     for (int i = 0; i < OSD_CUSTOM_MSG_COUNT; i++) {
-        /* OSD 字体只能显示可打印 ASCII，先过滤一遍 */
+        /* OSD 字体只能显示可打印 ASCII 且大小写敏感，先过滤+转大写 */
         char safe[OSD_CUSTOM_MSG_MAX_LEN + 1];
         msp_osd_sanitize(safe, msgs[i], OSD_CUSTOM_MSG_MAX_LEN);
 
-        uint8_t payload[OSD_CUSTOM_MSG_MAX_LEN + 2];
-        uint16_t len = msp_build_custom_msg(payload, (uint8_t)i, safe);
-
-        /* 只发不等应答；飞控的应答由 flush_rx 丢弃 */
-        int rc = msp_host_send(&s_msp, MSP2_SET_TEXT, payload, len);
-        if (rc != MSP_HOST_OK) {
-            ESP_LOGW(TAG, "SET_TEXT custom_osd[%d] failed (%d)", i, rc);
-        }
+        /* 只入队不发送：MSP 链路由 fc_msp 的任务独占（宿主不是线程安全的），
+         * 这里绝不直接碰 UART。非阻塞，队列满会丢弃并由下一轮重发。 */
+        fc_msp_send_osd_text((uint8_t)i, safe);
     }
-    msp_uart_flush_rx();
 }
 
 /* ------------------------------------------------------------------ */
@@ -561,8 +549,8 @@ static void osd_task(void *arg)
     for (;;) {
         TickType_t now = xTaskGetTickCount();
 
-        /* 先做 OSD：它时间敏感（对延迟最直观）。RC 轮询放在后面，
-         * 这样即使飞控没应答、RC 请求白等 50ms，也不会顺延 OSD 的刷新。 */
+        /* 到点就合成一轮 OSD 文本并交给 fc_msp 发送。
+         * 本任务不再做串口 I/O，所以这里不会因飞控不应答而顺延。 */
         if (now - last_osd >= pdMS_TO_TICKS(OSD_UPDATE_MS)) {
             last_osd = now;
 
@@ -590,43 +578,22 @@ static void osd_task(void *arg)
             last_osd = now;
         }
 
-        /* 读 RC 通道，驱动通道映射。与 OSD 写共用同一 UART，顺序执行。 */
-        msp_packet_t reply;
-        msp_decoder_init(&s_msp.dec);   /* 安全复位解析状态机 */
-        if (msp_host_request(&s_msp, MSP_RC, NULL, 0, &reply, 50) == MSP_HOST_OK) {
-            uint16_t ch[16];
-            if (msp_decode_rc(&reply, ch)) {
-                channel_map_feed(ch);
-            }
-        }
-
+        /* RC 通道轮询已迁到 fc_msp 的任务（它独占 MSP UART）。
+         * 本任务只负责合成文本，不再碰串口。 */
         vTaskDelay(pdMS_TO_TICKS(OSD_POLL_MS));
     }
 }
 
 int osd_logic_init(void)
 {
-    msp_uart_config_t cfg = {
-        .uart_num  = MSP_UART_NUM,
-        .tx_pin    = MSP_TX_PIN,
-        .rx_pin    = MSP_RX_PIN,
-        .baud_rate = MSP_BAUD_RATE,
-    };
-
-    esp_err_t err = msp_uart_init(&cfg);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "msp_uart_init failed: %s", esp_err_to_name(err));
-        return -1;
-    }
-    msp_uart_bind(&s_msp, MSP_LINK_VERSION);
-
+    /* MSP UART 不在这里初始化 —— 它归 fc_msp 管（见 fc_msp_init）。
+     * app_main 必须先调 fc_msp_init()，否则 send_osd_msgs 入队的文本没人发。 */
     BaseType_t r = xTaskCreate(osd_task, "osd_task", 4096, NULL, 1, NULL);
     if (r != pdPASS) {
         ESP_LOGE(TAG, "failed to create osd_task");
         return -1;
     }
 
-    ESP_LOGI(TAG, "OSD task started (UART%u, %d baud, v%d)",
-             (unsigned)MSP_UART_NUM, MSP_BAUD_RATE, MSP_LINK_VERSION);
+    ESP_LOGI(TAG, "OSD task started");
     return 0;
 }
