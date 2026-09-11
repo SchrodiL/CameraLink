@@ -165,6 +165,31 @@ th { color: var(--muted); font-weight: 500; }
 .modal p { margin: 0 0 16px; font-size: 13px; line-height: 1.75; color: var(--text); }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
 
+/* ---- 二选一滑块开关 ---- */
+/* 用于「协议」（DJI / Insta360）和「WiFi」（关 / 开）这类只有两个状态、
+ * 且互斥的开关。比下拉框+按钮更直观：一眼看出当前在哪档、点另一档即切换。 */
+.seg {
+  position: relative; display: inline-flex; padding: 3px;
+  background: #0f141a; border: 1px solid var(--border); border-radius: 999px;
+  user-select: none;
+}
+.seg-thumb {
+  position: absolute; top: 3px; bottom: 3px; left: 3px;
+  width: calc(50% - 3px);          /* 预置值，JS 会用实测宽度覆盖 */
+  background: var(--accent); border-radius: 999px;
+  transition: transform .18s ease, width .18s ease;
+}
+.seg-btn {
+  position: relative; z-index: 1;
+  background: none; border: 0; cursor: pointer;
+  padding: 5px 14px; border-radius: 999px;
+  font-size: 13px; font-family: var(--font-heading);
+  color: var(--muted); transition: color .18s;
+}
+.seg-btn.on { color: #06101c; }
+/* 请求已发出、等后端确认 —— 变淡提示「还没定下来」 */
+.seg.pending { opacity: .65; }
+
 /* 造字工坊凌黑体（非商用版）的**子集** —— 只含界面标题里实际用到的 36 个汉字，
  * 5KB。整个字体有 1.4MB，塞不进固件；子集化后体积可忽略。
  * 子集里**没有拉丁字形**，所以标题里的 RC / OSD / WiFi 会自动落到下一个字体（ROG）。
@@ -210,11 +235,11 @@ th { color: var(--muted); font-weight: 500; }
       <h2>协议与对频</h2>
       <div class="row">
         <label>协议</label>
-        <select id="proto-mode" onchange="protoPicked()">
-          <option value="0">DJI</option>
-          <option value="1">Insta360</option>
-        </select>
-        <button class="btn" onclick="setProtocol()">切换协议</button>
+        <div class="seg" id="proto-seg" data-sel="0">
+          <span class="seg-thumb"></span>
+          <button class="seg-btn">DJI</button>
+          <button class="seg-btn">Insta360</button>
+        </div>
       </div>
       <div class="row">
         <button class="btn secondary" onclick="pairStart()">开始对频</button>
@@ -224,10 +249,13 @@ th { color: var(--muted); font-weight: 500; }
     <div class="card">
       <h2>WiFi 设置</h2>
       <div class="row">
-        <label>WiFi 状态</label>
+        <label>WiFi</label>
+        <div class="seg" id="wifi-seg" data-sel="0">
+          <span class="seg-thumb"></span>
+          <button class="seg-btn">关</button>
+          <button class="seg-btn">开</button>
+        </div>
         <span class="status-badge"><span class="dot" id="wifi-dot"></span> <span id="wifi-state" class="mono">—</span></span>
-        <button class="btn secondary" onclick="wifiOn()">打开</button>
-        <button class="btn secondary" onclick="wifiOff()">关闭</button>
       </div>
       <div class="row">
         <label>空闲判定时长</label>
@@ -410,46 +438,78 @@ async function saveOsd() {
   toast('OSD 配置已保存');
 }
 
+/* ---- 二选一滑块开关（公用）---- */
+/* segSet 只改显示状态；segBind 绑点击，只在真的换档时才回调。
+ *
+ * 蓝色滑块的位置和宽度**按实际按钮实测**，不用 calc(50%)：两个标签的宽度
+ * 往往不等（「DJI」vs「Insta360」），按 50% 算会盖不住正确的档位。 */
+function segSet(id, sel) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.dataset.sel = sel ? '1' : '0';
+
+  const btns = el.querySelectorAll('.seg-btn');
+  btns.forEach((b, i) => b.classList.toggle('on', i === sel));
+
+  const act = btns[sel];
+  const thumb = el.querySelector('.seg-thumb');
+  if (act && thumb) {
+    /* offsetLeft 相对 .seg（它是 offsetParent，position:relative），
+     * 减去容器 3px 内边距才是滑块的位移起点。 */
+    thumb.style.width = act.offsetWidth + 'px';
+    thumb.style.transform = 'translateX(' + (act.offsetLeft - 3) + 'px)';
+  }
+}
+function segBind(id, onPick) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.querySelectorAll('.seg-btn').forEach((b, i) => {
+    b.onclick = () => {
+      if (el.dataset.sel === (i ? '1' : '0')) return;   /* 已经是这档，不重发 */
+      onPick(i);
+    };
+  });
+}
+
 /* ---- 协议 ---- */
 async function loadProtocol() {
   const d = await jget('/api/protocol');
-  document.getElementById('proto-mode').value = d.mode;
+  segSet('proto-seg', d.mode);
 }
-/* ---- 协议切换 ----
- * 状态轮询每 2 秒跑一次。如果它无条件把下拉框写回当前协议，用户根本来不及点
- * 「切换协议」——选中的值会先被顶回去，按钮发出去的就是原协议，后端看到角色
- * 没变直接返回，表现为「点了没用」。所以用户一旦选中就暂停轮询同步，
- * 直到后端真的报出目标协议（或超时失败）。 */
-let protoWant = null;      /* 用户选中、等待生效的协议；null = 没有待确认的选择 */
+
+/* 状态轮询每 2 秒跑一次，滑块位置**不能**在请求发出后就被轮询顶回旧值——
+ * 那样用户点了没反应（下拉框时代的老问题）。所以点下新档后暂停轮询同步，
+ * 直到后端真的报出目标协议（或超时失败）；期间滑块停在目标档但整体变淡，
+ * 提示「还没定下来」。 */
+let protoWant = null;      /* 用户选中的目标协议；null = 没有待确认的选择 */
 let protoWantAt = 0;
 
-function protoPicked() {
-  protoWant = parseInt(document.getElementById('proto-mode').value, 10);
+async function setProtocolTo(v) {
+  protoWant = v;
   protoWantAt = Date.now();
-}
-
-async function setProtocol() {
-  protoWant = parseInt(document.getElementById('proto-mode').value, 10);
-  protoWantAt = Date.now();
-  await jsend('PUT', '/api/protocol', { mode: protoWant });
+  segSet('proto-seg', v);
+  document.getElementById('proto-seg').classList.add('pending');
+  await jsend('PUT', '/api/protocol', { mode: v });
   toast('正在切换协议…');
 }
 
-/* 轮询里调用：有待确认的选择时不覆盖下拉框，并判断是否已生效 / 超时 */
+/* 轮询里调用：有待确认的选择时不覆盖滑块，并判断是否已生效 / 超时 */
 function protoSync(s) {
-  const sel = document.getElementById('proto-mode');
+  const el = document.getElementById('proto-seg');
 
   if (protoWant === null) {
-    sel.value = s.protocol;
+    segSet('proto-seg', s.protocol);
     return;
   }
-  if (s.protocol === protoWant) {          /* 已生效，恢复正常同步 */
+  if (s.protocol === protoWant) {          /* 已生效 */
     protoWant = null;
-    sel.value = s.protocol;
+    el.classList.remove('pending');
+    segSet('proto-seg', s.protocol);
     toast('协议已切换为 ' + (s.protocol === 1 ? 'Insta360' : 'DJI'));
   } else if (Date.now() - protoWantAt > 6000) {
-    protoWant = null;                      /* 超时：放弃，下拉框回到真实状态 */
-    sel.value = s.protocol;
+    protoWant = null;                      /* 超时：放弃，滑块回到真实状态 */
+    el.classList.remove('pending');
+    segSet('proto-seg', s.protocol);
     toast('协议切换未生效');
   }
 }
@@ -459,6 +519,7 @@ async function pairStart() { await fetch('/api/pairing/start', { method: 'POST' 
 function renderWifi(on) {
   document.getElementById('wifi-dot').className = 'dot ' + (on ? 'on' : 'off');
   document.getElementById('wifi-state').textContent = on ? '开' : '关';
+  segSet('wifi-seg', on ? 1 : 0);
 }
 async function saveWifi() {
   const delay = parseInt(document.getElementById('wifi-auto-delay').value, 10) || 60;
@@ -855,6 +916,11 @@ async function init() {
   buildNav();
   buildOsd();
   buildChmap();
+
+  /* 两个二选一滑块：点另一档即生效，不需要额外的确认按钮 */
+  segBind('proto-seg', setProtocolTo);
+  segBind('wifi-seg', (v) => { if (v) wifiOn(); else wifiOff(); });
+
   try {
     await Promise.all([loadOsd(), loadProtocol(), loadChmap()]);
   } catch (e) { /* ignore */ }
