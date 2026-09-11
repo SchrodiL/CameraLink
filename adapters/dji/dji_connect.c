@@ -30,6 +30,11 @@ static connect_state_t connect_state = BLE_NOT_INIT;
 /* 上电自动重连任务（在 connect_logic_ble_init 中创建） */
 static void connect_logic_auto_connect_task(void *arg);
 
+/* 自动连接任务是否在运行。dji_init() 每次切回大疆都会执行，若不加这道闸，
+ * 反复切换协议会不断堆出新的自动连接任务，多个任务同时扫描/连接会互相打架。
+ * 任务结束时自行清位，所以「尝试失败后再切回来」仍能重新起。 */
+static volatile bool s_auto_conn_running = false;
+
 /**
  * @brief Get current connection state
  *        获取当前连接状态
@@ -112,10 +117,22 @@ int connect_logic_ble_init() {
     /* 载入上次连接设备的地址 */
     ble_load_saved_peer();
 
-    /* 上电自动重连上次设备（若有保存的地址） */
-    if (ble_has_saved_peer()) {
+    /* 自动连接任务：有保存地址就直连，没有就退化成扫描找相机 —— 两种情况
+     * connect_logic_connect_camera(true) 内部都已处理（use_saved && has_peer
+     * 为假时走扫描分支）。
+     *
+     * 这里**不能只在有保存地址时才起任务**：那样在没有地址时会静默什么都不做，
+     * 表现为「切到大疆后相机一直连不上」。触发条件是「已对频」标志被置位、
+     * 但从未成功连过大疆相机——比如对频时检测到的是 insta360 相机（走 switch_to
+     * 把标志置了位），或者做过恢复默认设置把地址擦掉了。insta360 不受影响，
+     * 因为它是相机主动连进来，不需要保存地址。 */
+    if (s_auto_conn_running) {
+        ESP_LOGI(TAG, "Auto-connect already running, skip");
+    } else {
+        s_auto_conn_running = true;
         xTaskCreate(connect_logic_auto_connect_task, "auto_conn", 4096, NULL, 2, NULL);
-        ESP_LOGI(TAG, "Auto-connect task started");
+        ESP_LOGI(TAG, "Auto-connect task started (saved peer: %s)",
+                 ble_has_saved_peer() ? "yes" : "none, will scan for a camera");
     }
 
     ESP_LOGI(TAG, "BLE init successfully");
@@ -537,6 +554,7 @@ static void connect_logic_auto_connect_task(void *arg) {
     }
     if (s_ble_profile.gattc_if == ESP_GATT_IF_NONE) {
         ESP_LOGE(TAG, "GATT client not ready, abort auto-connect");
+        s_auto_conn_running = false;
         vTaskDelete(NULL);
         return;
     }
@@ -545,6 +563,7 @@ static void connect_logic_auto_connect_task(void *arg) {
     if (connect_logic_connect_camera(true) != 0) {
         ESP_LOGW(TAG, "Auto-connect failed");
     }
+    s_auto_conn_running = false;   /* 允许下次重新起（例如切走再切回来） */
     vTaskDelete(NULL);
 }
 
