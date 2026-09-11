@@ -24,7 +24,7 @@ static void health_update(uint8_t *h, bool ok)
 }
 
 /* 样本本身是否可用（不含健康度判定） */
-static bool sample_usable(const gps_sample_t *s, uint32_t now_ms)
+bool gps_sample_usable(const gps_sample_t *s, uint32_t now_ms)
 {
     if (s == NULL || !s->valid) {
         return false;
@@ -103,8 +103,8 @@ void gps_fusion_compute(const gps_sample_t *local, const gps_sample_t *fc,
 
     /* 健康度按「样本本身是否可用」更新，**不受健康度自己的门限影响** ——
      * 否则一旦被判不健康就再也不会恢复（不健康 → 不参与 → 永远不累计成功）。 */
-    bool raw_local = sample_usable(local, now_ms);
-    bool raw_fc    = sample_usable(fc, now_ms);
+    bool raw_local = gps_sample_usable(local, now_ms);
+    bool raw_fc    = gps_sample_usable(fc, now_ms);
     health_update(&h->local, raw_local);
     health_update(&h->fc,    raw_fc);
 

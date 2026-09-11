@@ -18,6 +18,8 @@
 /* 融合结果：融合任务写，其它任务（osd_task / dji_gps）读 */
 static portMUX_TYPE s_fused_lock = portMUX_INITIALIZER_UNLOCKED;
 static gps_fused_t  s_fused;
+/* 两个来源各自的状态，与 s_fused 同一把锁保护 */
+static gps_sources_t s_sources;
 
 /* 飞控样本：fc_msp 的任务写，融合任务读 */
 static portMUX_TYPE s_fc_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -90,6 +92,16 @@ void gps_fusion_get(gps_fused_t *out)
     taskEXIT_CRITICAL(&s_fused_lock);
 }
 
+void gps_fusion_get_sources(gps_sources_t *out)
+{
+    if (out == NULL) {
+        return;
+    }
+    taskENTER_CRITICAL(&s_fused_lock);
+    *out = s_sources;
+    taskEXIT_CRITICAL(&s_fused_lock);
+}
+
 void gps_fusion_set_ready_cb(gps_fused_ready_cb_t cb)
 {
     s_ready_cb = cb;
@@ -140,11 +152,24 @@ static void gps_fusion_task(void *arg)
         fc_have = s_fc_have;
         taskEXIT_CRITICAL(&s_fc_lock);
 
+        uint32_t t = now_ms();
+
+        /* 两个来源各自的状态：状态灯要区分「没接」和「接了但没定位」 */
+        gps_sources_t src = {
+            .local_present = is_gps_connected(),
+            .local_valid   = gps_sample_usable(&ls, t),
+            .local_sats    = ls.num_sat,
+            .fc_present    = fc_have,
+            .fc_valid      = fc_have && gps_sample_usable(&fc, t),
+            .fc_sats       = fc_have ? fc.num_sat : 0,
+        };
+
         gps_fused_t out;
-        gps_fusion_compute(&ls, fc_have ? &fc : NULL, now_ms(), &out, &s_health);
+        gps_fusion_compute(&ls, fc_have ? &fc : NULL, t, &out, &s_health);
 
         taskENTER_CRITICAL(&s_fused_lock);
         s_fused = out;
+        s_sources = src;
         taskEXIT_CRITICAL(&s_fused_lock);
 
         /* 来源变化或有/无定位翻转时打一行 —— GPS 问题靠猜太费劲 */

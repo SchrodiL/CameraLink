@@ -80,6 +80,13 @@ typedef struct {
 #define GPS_FUSION_ACC_FLOOR_M   0.3
 
 /*
+ * 样本本身是否可用：有 3D 定位、星数过闸、且没超过 STALE_MS。
+ * **不含**健康度判定 —— 健康度是运行时累积的状态，由 gps_fusion_compute 处理。
+ * 单独暴露出来是为了让上层能分别显示"哪一路有数据/有定位"（状态灯用）。
+ */
+bool gps_sample_usable(const gps_sample_t *s, uint32_t now_ms);
+
+/*
  * 计算融合结果。
  *   local / fc  —— 两个来源的样本（可以为 NULL 或 valid=false）
  *   now_ms      —— 当前时刻（与 sample_ms 同源）

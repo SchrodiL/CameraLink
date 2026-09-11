@@ -42,6 +42,22 @@ void gps_fusion_feed_fc(uint8_t fix_type, uint8_t num_sat,
 /* 取融合结果快照（加锁拷贝）。 */
 void gps_fusion_get(gps_fused_t *out);
 
+/*
+ * 两个来源**各自**的状态。
+ * 融合结果只说明「现在用的是谁」，不说明另一路是「没接」还是「接了但没定位」——
+ * 状态灯要区分这两者，所以单独暴露。
+ */
+typedef struct {
+    bool    local_present;   /* 外接 GNSS 模块在发数据（链路已建立） */
+    bool    local_valid;     /* 外接有可用定位 */
+    uint8_t local_sats;
+    bool    fc_present;      /* 收到过飞控的 GPS 样本 */
+    bool    fc_valid;        /* 飞控有可用定位 */
+    uint8_t fc_sats;
+} gps_sources_t;
+
+void gps_fusion_get_sources(gps_sources_t *out);
+
 /* 融合结果**有效**时每个周期回调一次（在融合任务上下文）。
  * DJI 后端的 GPS 推送挂在这里——原先它挂在本地 GNSS 的 ready 回调上，
  * 那样「只有飞控有定位」时永远推不出去。 */

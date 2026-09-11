@@ -118,6 +118,14 @@ static esp_err_t status_handler(httpd_req_t *req) {
     gps_fusion_get(&fused);
     cJSON_AddNumberToObject(gps, "h_acc_m", fused.h_acc_m);
     cJSON_AddNumberToObject(gps, "pdop", fused.pdop);
+
+    /* 两个来源各自的状态：状态灯要区分「没接」和「接了但没定位」 */
+    gps_sources_t srcs;
+    gps_fusion_get_sources(&srcs);
+    cJSON_AddBoolToObject(gps, "local_present", srcs.local_present);
+    cJSON_AddBoolToObject(gps, "local_valid", srcs.local_valid);
+    cJSON_AddBoolToObject(gps, "fc_present", srcs.fc_present);
+    cJSON_AddBoolToObject(gps, "fc_valid", srcs.fc_valid);
     cJSON_AddItemToObject(root, "gps", gps);
 
     cJSON *chans = cJSON_CreateArray();
