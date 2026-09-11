@@ -42,6 +42,27 @@ typedef struct __attribute__((packed)) {
                                    // 保留字段
 } camera_mode_switch_response_frame_t;
 
+/*
+ * Camera Power Mode Setting (CmdSet = 0x00, CmdID = 0x1A)
+ * 相机电源模式设置
+ *
+ * 睡眠/唤醒的唯一控制方式：**绝对值设置**，不是 toggle。相机当前处于哪种模式
+ * 由状态推送（1D02/1D06）的 power_mode 字段回报，所以遥控知道当前状态。
+ * 详见 docs/add_camera_sleep_feature_example.md
+ */
+#define CAMERA_POWER_MODE_NORMAL 0x00  // 正常工作
+#define CAMERA_POWER_MODE_SLEEP  0x03  // 睡眠
+
+typedef struct __attribute__((packed)) {
+    uint8_t power_mode;             // Power mode: 0-Normal mode, 3-Sleep mode
+                                    // 电源模式：0-正常工作，3-睡眠
+} camera_power_mode_switch_command_frame_t;
+
+typedef struct __attribute__((packed)) {
+    uint8_t ret_code;               // Return code: 0 for success, non-zero for failure
+                                    // 返回码：0 成功，非 0 失败
+} camera_power_mode_switch_response_frame_t;
+
 typedef struct __attribute__((packed)) {
     uint16_t ack_result;           // Acknowledgment result
                                    // 应答结果

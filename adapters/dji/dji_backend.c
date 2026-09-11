@@ -105,12 +105,51 @@ static void dji_record_stop(void)
     }
 }
 
+/* 切换「相机端」预设：上报 QS 键短按。
+ * 依官方文档（Q&A 第 10 条）：QS 键上报等价于短按相机上的 QS 键，
+ * 目标模式由相机自身的快速切换列表决定，遥控器无需（也无法）指定，
+ * 按一次进列表第一个模式，继续短按依次循环。 */
+static void dji_preset_next(void)
+{
+    key_report_response_frame_t *r = command_logic_key_report_qs();
+    if (r != NULL) {
+        free(r);
+    }
+}
+
+/* 睡眠/唤醒：读当前 power_mode 取反再下发。
+ * 大疆这套是**绝对值设置**（0=正常 / 3=睡眠），而状态推送 1D02/1D06 会回报
+ * 当前 power_mode，所以这里能确定性地切到目标状态 —— 不像 insta360 只能盲 toggle。
+ * 相机未回报过状态时 current_camera_power_mode 为 0（正常），此时会切到睡眠，
+ * 是合理的默认方向。 */
+static void dji_sleep_wake(void)
+{
+    uint8_t target = (current_camera_power_mode == CAMERA_POWER_MODE_SLEEP)
+                     ? CAMERA_POWER_MODE_NORMAL
+                     : CAMERA_POWER_MODE_SLEEP;
+
+    camera_power_mode_switch_response_frame_t *r = command_logic_set_power_mode(target);
+    if (r != NULL) {
+        free(r);
+    }
+}
+
+/* 深度唤醒：相机已休眠/关机、链路不在时，靠**开始广播**把它叫回来。
+ * 大疆协议里没有独立的「唤醒信标」，广播本机（伪装成官方遥控）就是唤醒手段。 */
+static void dji_wake_beacon(void)
+{
+    connect_logic_ble_wakeup();
+}
+
 static void dji_refresh_state(camera_state_t *st)
 {
     st->recording = is_camera_recording();
     st->rec_seconds = st->recording ? (uint32_t)current_record_time : 0;
     st->mode = current_camera_mode;
     st->battery_pct = current_camera_bat_percentage;
+    st->battery_hi = current_camera_bat_percentage;  /* DJI 给的是精确值，无区间 */
+    st->battery_label = BATT_LABEL_NONE;             /* DJI 显示精确百分比，不用档位词 */
+    st->charging = false;   /* DJI 的状态推送里没有充电标志，显式清零避免残留 */
     st->res = current_video_resolution;
     st->fps_idx = current_fps_idx;
     st->photo_ratio = current_photo_ratio;
@@ -152,7 +191,8 @@ static void dji_pairing_gap_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb
         }
         if (ble_is_dji_camera_adv(param)) {
             esp_ble_gap_stop_scanning();
-            ble_save_peer_addr(param->scan_rst.bda);
+            /* 只记到 RAM：GAP 回调里做 NVS flash 写会阻塞 BT 栈。落盘在任务上下文完成。 */
+            ble_note_peer_addr(param->scan_rst.bda);
             ESP_LOGI(TAG, "Detected DJI camera %02X:%02X:%02X:%02X:%02X:%02X",
                      param->scan_rst.bda[0], param->scan_rst.bda[1], param->scan_rst.bda[2],
                      param->scan_rst.bda[3], param->scan_rst.bda[4], param->scan_rst.bda[5]);
@@ -181,6 +221,12 @@ const camera_backend_t dji_backend = {
     .shutter = dji_shutter,
     .record_start = dji_record_start,
     .record_stop = dji_record_stop,
+    .preset_next = dji_preset_next,
+    .sleep_wake = dji_sleep_wake,
+    /* power_off 留空：大疆协议没有「关机」命令（CmdSet/CmdID 全集里没有）。
+     * 相机只能靠物理按键关闭；能远程控制的只有睡眠（0x00/0x1A）。 */
+    .power_off = NULL,
+    .wake_beacon = dji_wake_beacon,
     .refresh_state = dji_refresh_state,
     .pairing_gap_handler = dji_pairing_gap_handler,
 };

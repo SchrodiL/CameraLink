@@ -56,12 +56,35 @@ static void insta360_record_stop(void)
     }
 }
 
+static void insta360_preset_next(void)
+{
+    insta360_logic_mode_next();
+}
+
+static void insta360_sleep_wake(void)
+{
+    insta360_logic_sleep_wake();
+}
+
+static void insta360_power_off(void)
+{
+    insta360_logic_power_off();
+}
+
+static void insta360_wake_beacon(void)
+{
+    insta360_logic_wake();
+}
+
 static void insta360_refresh_state(camera_state_t *st)
 {
     st->recording = insta360_is_recording();
     st->rec_seconds = insta360_get_recording_seconds();
     st->mode = 0;
     st->battery_pct = insta360_get_battery_pct();
+    st->battery_hi = insta360_get_battery_hi();
+    st->battery_label = insta360_get_battery_label();
+    st->charging = insta360_is_charging();
     st->res = 0;
     st->fps_idx = 0;
     st->photo_ratio = 0;
@@ -76,7 +99,15 @@ static void insta360_refresh_state(camera_state_t *st)
     } else {
         st->mode_param[0] = '\0';
     }
-    st->mode_name[0] = '\0';
+
+    /* 拍摄模式名（SLOWMO/TIMELAPSE/…）。未确认的模式码留空，OSD 会回退显示规格串。 */
+    const char *mode_name = insta360_get_mode_name();
+    if (mode_name != NULL) {
+        strncpy(st->mode_name, mode_name, sizeof(st->mode_name) - 1);
+        st->mode_name[sizeof(st->mode_name) - 1] = '\0';
+    } else {
+        st->mode_name[0] = '\0';
+    }
 
     const char *abbr = insta360_model_abbr(insta360_get_model());
     if (abbr != NULL) {
@@ -104,6 +135,10 @@ const camera_backend_t insta360_backend = {
     .shutter = insta360_shutter,
     .record_start = insta360_record_start,
     .record_stop = insta360_record_stop,
+    .preset_next = insta360_preset_next,   /* 发通用「下一个模式」键，目标由相机决定 */
+    .sleep_wake = insta360_sleep_wake,
+    .power_off = insta360_power_off,
+    .wake_beacon = insta360_wake_beacon,
     .refresh_state = insta360_refresh_state,
     .pairing_gap_handler = insta360_logic_gap_handler,
 };

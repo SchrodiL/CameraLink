@@ -17,12 +17,12 @@ static const char *TAG = "OSD_CFG";
 /* 默认低电量报警阈值：25%（0 表示关闭报警） */
 #define OSD_DEFAULT_BATT_ALARM 25
 
-/* 默认布局：录制状态、电量、GPS卫星数、地速+海拔。 */
+/* 默认布局：录制状态、相机电量、录制规格、名称+剩余容量。 */
 static const osd_item_t s_default_slots[OSD_SLOT_COUNT] = {
     OSD_ITEM_REC,
     OSD_ITEM_BATTERY,
-    OSD_ITEM_GPS,
-    OSD_ITEM_SPEED_ALT,
+    OSD_ITEM_SPEC,
+    OSD_ITEM_NAME_STORAGE,
 };
 
 static osd_item_t s_slots[OSD_SLOT_COUNT];

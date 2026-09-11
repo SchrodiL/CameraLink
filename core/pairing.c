@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 
 #include <string.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_gap_ble_api.h"
 
@@ -29,8 +31,22 @@ static esp_ble_scan_params_t s_scan_params = {
     .scan_duplicate = BLE_SCAN_DUPLICATE_DISABLE,
 };
 
+/* 对频轮询任务：独立于控制队列运行，避免控制队列繁忙时对频检测被饿死。 */
+static void pairing_task(void *arg)
+{
+    (void)arg;
+    for (;;) {
+        pairing_poll();
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+}
+
 int pairing_init(void)
 {
+    if (xTaskCreate(pairing_task, "pairing", 3072, NULL, 3, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "failed to create pairing task");
+        return -1;
+    }
     return 0;
 }
 

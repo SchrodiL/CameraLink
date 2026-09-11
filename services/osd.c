@@ -24,13 +24,59 @@
 /* MSPv2 原生帧；MSP2_SET_TEXT 是 MSPv2-only 命令 */
 #define MSP_LINK_VERSION  MSP_V2_NATIVE
 
-/* OSD 更新周期（毫秒） */
-#define OSD_UPDATE_MS     1000
+/* OSD 文本写周期（毫秒）。取 500ms（2Hz）与相机的 2Hz 状态推送对齐——
+ * 原先 1Hz 会让画面比相机状态慢一拍（最坏滞后 1 秒多）。 */
+#define OSD_UPDATE_MS     500
+
+/* 任务轮询粒度（毫秒）。越小，OSD 到点的抖动越小。 */
+#define OSD_POLL_MS       50
+
+/* 低电量图标闪烁的半周期（毫秒）：1 秒亮、1 秒灭，与 OSD 写周期解耦，
+ * 这样提高写频率不会让图标闪得更快。 */
+#define OSD_BLINK_MS      1000
+
+/* 充电动画步进间隔（毫秒）：2Hz，每秒推进两格，7 格一轮约 3.5s。 */
+#define OSD_CHRG_MS       500
 
 static msp_host_t s_msp;
 
-/* 低电量报警图标闪烁相位：每个 OSD 刷新周期翻转一次（周期 1s → 0.5Hz 交替，即 1s 亮 1s 灭） */
+/* 电量文字档位 → OSD 字符串；BATT_LABEL_NONE 返回 NULL（改用百分比显示）。 */
+static const char *batt_label_str(battery_label_t l)
+{
+    switch (l) {
+    case BATT_LABEL_FULL:   return "FULL";
+    case BATT_LABEL_HIGH:   return "HIGH";
+    case BATT_LABEL_MEDIUM: return "MEDIUM";
+    case BATT_LABEL_LOW:    return "LOW";
+    default:                return NULL;
+    }
+}
+
+/* 电量档位 → OSD 电量格图标（0x90 满 / 0x92 / 0x94 / 0x97 低电量报警符号）。
+ * 相机只按档位上报电量，图标就用固定格数，而不是把区间下界当成精确百分比去算格数
+ * ——那样同一档位内的边界抖动（挡位边界 ±1%）会让图标来回跳。
+ * BATT_LABEL_LOW 直接落到 0x97（报警符号），与 DJI 侧报警阈值触发时同一个图标。
+ * BATT_LABEL_NONE（DJI 有精确百分比）返回 0，由调用方按百分比分档。 */
+static uint8_t batt_icon_for_label(battery_label_t l)
+{
+    switch (l) {
+    case BATT_LABEL_FULL:   return MSP_OSD_SYM_BATT_FULL;        /* 0x90 */
+    case BATT_LABEL_HIGH:   return MSP_OSD_SYM_BATT_FULL + 2;    /* 0x92 */
+    case BATT_LABEL_MEDIUM: return MSP_OSD_SYM_BATT_FULL + 4;    /* 0x94 */
+    case BATT_LABEL_LOW:    return MSP_OSD_SYM_MAIN_BATT;        /* 0x97 */
+    default:                return 0;
+    }
+}
+
+/* 低电量报警 / 低电量档位 图标闪烁相位：1Hz 翻转（1s 亮 1s 灭），
+ * 与 OSD 写频率解耦，提高写频率不会让图标闪得更快。 */
 static bool s_batt_blink_on = false;
+
+/* 充电动画相位 0..(CHRG_ANIM_STEPS-1)，每 OSD_CHRG_MS 推进一格。
+ * 图标 = 0x96 - 相位，即从最空的一格逐格填到最满，到头回卷，形成填充动画。
+ * 独立计时（2Hz），不跟随报警闪烁的 1Hz。 */
+#define CHRG_ANIM_STEPS (MSP_OSD_SYM_BATT_EMPTY - MSP_OSD_SYM_BATT_FULL + 1)   /* 7 */
+static uint8_t s_chrg_anim = 0;
 
 /* ------------------------------------------------------------------ */
 /* OSD 内容池：按槽位配置把相机状态组合成一条 OSD 文本（<= 16 字符）      */
@@ -225,8 +271,9 @@ static void compose_item(osd_item_t item, const camera_state_t *st, char *out)
             snprintf(out, OSD_CUSTOM_MSG_MAX_LEN + 1, "%c%u:%02u",
                      (char)MSP_OSD_SYM_REC, (unsigned)m, (unsigned)s);
         } else if (st->connected) {
-            /* 待机时显示拍摄模式（insta360 无模式概念，回退 STBY）。
-             * 优先用 1D06 下发的模式名（如 PORTRAIT），旧协议无此字段时回退枚举映射。 */
+            /* 待机时显示拍摄模式。
+             * 两种协议都可能下发模式名（DJI 1D06 的 mode_name / insta360 的模式码），
+             * 有名字就优先用，否则回退各自的枚举映射 / STBY。 */
             if (st->protocol == CAM_PROTO_DJI) {
                 if (st->mode_name[0] != '\0') {
                     char up[21];
@@ -239,6 +286,11 @@ static void compose_item(osd_item_t item, const camera_state_t *st, char *out)
                 } else {
                     snprintf(out, OSD_CUSTOM_MSG_MAX_LEN + 1, "%s", osd_mode_abbr(st->mode));
                 }
+            } else if (st->mode_name[0] != '\0') {
+                /* insta360：模式表给出的名称，已是全大写 ASCII，直接显示。
+                 * 用显式精度截断到 OSD 宽度（mode_name 缓冲区比 OSD 长）。 */
+                snprintf(out, OSD_CUSTOM_MSG_MAX_LEN + 1, "%.*s",
+                         OSD_CUSTOM_MSG_MAX_LEN, st->mode_name);
             } else {
                 snprintf(out, OSD_CUSTOM_MSG_MAX_LEN + 1, "STBY");
             }
@@ -278,24 +330,81 @@ static void compose_item(osd_item_t item, const camera_state_t *st, char *out)
         break;
     }
 
-    case OSD_ITEM_BATTERY: {
-        if (st->connected && st->battery_pct > 0) {
-            uint8_t alarm = osd_config_get_batt_alarm();
-            unsigned pct = (unsigned)st->battery_pct;
+    case OSD_ITEM_GPS_LAT:
+    case OSD_ITEM_GPS_LON: {
+        const bool is_lat = (item == OSD_ITEM_GPS_LAT);
+        const char sym = is_lat ? (char)MSP_OSD_SYM_LAT : (char)MSP_OSD_SYM_LON;
 
-            if (alarm > 0 && pct < alarm) {
-                /* 低电量报警：图标切换为 0x97 电池符号，并随刷新周期闪烁（数字常显） */
-                char icon = s_batt_blink_on ? (char)MSP_OSD_SYM_MAIN_BATT : ' ';
-                snprintf(out, OSD_CUSTOM_MSG_MAX_LEN + 1, "%c%u%%", icon, pct);
+        if (!st->gps_connected) {
+            snprintf(out, OSD_CUSTOM_MSG_MAX_LEN + 1, "NO GPS");
+            break;
+        }
+        if (!st->gps_valid) {
+            snprintf(out, OSD_CUSTOM_MSG_MAX_LEN + 1, "%c--", sym);
+            break;
+        }
+
+        /* 单独占一条消息，16 字符足够——固定 6 位小数：
+         * 最坏 "-179.999999" 是 11 字符，加 1 个标志共 12，余量充足。 */
+        char tmp[24];
+        snprintf(tmp, sizeof(tmp), "%c%.6f", sym, is_lat ? st->lat : st->lon);
+        msp_osd_sanitize(out, tmp, OSD_CUSTOM_MSG_MAX_LEN);
+        break;
+    }
+
+    case OSD_ITEM_BATTERY: {
+        if (st->connected && st->charging) {
+            /* 充电中：相机此时不上报电量档位（insta360 的心跳固定为充电标记值），
+             * 显示充电图标 + CHRG，而不是给出一个错误的百分比。
+             * 图标从最空(0x96)逐格填到最满(0x90)再回卷，2Hz 填充动画。 */
+            char icon = (char)(MSP_OSD_SYM_BATT_EMPTY - s_chrg_anim);
+            snprintf(out, OSD_CUSTOM_MSG_MAX_LEN + 1, "%cCHRG", icon);
+        } else if (st->connected && st->battery_pct > 0) {
+            char ptxt[12];
+            char icon;
+            bool blink = false;
+
+            const char *lbl = batt_label_str(st->battery_label);
+            if (lbl != NULL) {
+                /* 相机只按挡位上报（insta360）：图标由挡位定死。区间本身有 11~26% 的宽度，
+                 * 写成 "25-49%" 容易被误读成精确值；档位词更诚实也更省 OSD 宽度。
+                 * LOW 档即相机自己的低电量告警，直接用 0x97 报警符号并闪烁。 */
+                snprintf(ptxt, sizeof(ptxt), "%s", lbl);
+                icon  = (char)batt_icon_for_label(st->battery_label);
+                blink = (st->battery_label == BATT_LABEL_LOW);
             } else {
-                /* 正常：0x90..0x96 电量格按百分比均分为 7 档（满→空） */
+                unsigned pct = (unsigned)st->battery_pct;
+                if (st->battery_hi > st->battery_pct) {
+                    snprintf(ptxt, sizeof(ptxt), "%u-%u%%", pct, (unsigned)st->battery_hi);
+                } else {
+                    snprintf(ptxt, sizeof(ptxt), "%u%%", pct);
+                }
+
+                /* DJI 有精确百分比：0x90..0x96 七格线性映射 0-100%
+                 * （100%→0x90，25%→0x95，0%→0x96）。
+                 * 用户配置的报警阈值在此之上覆盖：≤阈值一律换成 0x97 并闪烁报警。
+                 * insta360 走上面的档位分支，**不读** WebUI 阈值——相机只按挡位上报，
+                 * 可配阈值会被吸附到挡位边界（设 26 和设 50 效果相同），细调没有意义。 */
                 unsigned level = (pct * 7U) / 101U;
-                char icon = (char)(MSP_OSD_SYM_BATT_EMPTY - level);
-                snprintf(out, OSD_CUSTOM_MSG_MAX_LEN + 1, "%c%u%%", icon, pct);
+                icon = (char)(MSP_OSD_SYM_BATT_EMPTY - level);
+
+                uint8_t alarm = (st->protocol == CAM_PROTO_INSTA360)
+                                ? 0 : osd_config_get_batt_alarm();
+                if (alarm > 0 && pct <= alarm) {
+                    icon  = (char)MSP_OSD_SYM_MAIN_BATT;   /* 0x97 报警符号 */
+                    blink = true;
+                }
             }
+
+            /* 闪烁：灭相用空格顶替图标，文字常显 */
+            if (blink && !s_batt_blink_on) {
+                icon = ' ';
+            }
+            snprintf(out, OSD_CUSTOM_MSG_MAX_LEN + 1, "%c%s", icon, ptxt);
         } else {
+            /* 未连接：最空的一格 + 占位符 */
             snprintf(out, OSD_CUSTOM_MSG_MAX_LEN + 1, "%c--",
-                     (char)MSP_OSD_SYM_MAIN_BATT);
+                     (char)MSP_OSD_SYM_BATT_EMPTY);
         }
         break;
     }
@@ -447,8 +556,41 @@ static void osd_task(void *arg)
 {
     (void)arg;
     TickType_t last_osd = 0;
+    TickType_t last_blink = 0;
+    TickType_t last_chrg = 0;
     for (;;) {
-        /* 读 RC 通道（~10Hz），驱动通道映射。与 OSD 写共用同一 UART，顺序执行。 */
+        TickType_t now = xTaskGetTickCount();
+
+        /* 先做 OSD：它时间敏感（对延迟最直观）。RC 轮询放在后面，
+         * 这样即使飞控没应答、RC 请求白等 50ms，也不会顺延 OSD 的刷新。 */
+        if (now - last_osd >= pdMS_TO_TICKS(OSD_UPDATE_MS)) {
+            last_osd = now;
+
+            /* 报警闪烁 1Hz：与 OSD 写频率解耦，提高写频率不会让图标闪得更快。 */
+            if (now - last_blink >= pdMS_TO_TICKS(OSD_BLINK_MS)) {
+                last_blink = now;
+                s_batt_blink_on = !s_batt_blink_on;
+            }
+
+            /* 充电动画 2Hz：独立计时，比报警闪烁快一倍。 */
+            if (now - last_chrg >= pdMS_TO_TICKS(OSD_CHRG_MS)) {
+                last_chrg = now;
+                s_chrg_anim = (uint8_t)((s_chrg_anim + 1) % CHRG_ANIM_STEPS);
+            }
+
+            camera_state_refresh();
+            const camera_state_t *st = camera_state_get();
+
+            char msgs[OSD_CUSTOM_MSG_COUNT][OSD_CUSTOM_MSG_MAX_LEN + 1];
+            compose_osd(st, msgs);
+            send_osd_msgs(msgs);
+
+            /* 发完再取一次时间，避免上面的串口写入时间被算进下一个周期。 */
+            now = xTaskGetTickCount();
+            last_osd = now;
+        }
+
+        /* 读 RC 通道，驱动通道映射。与 OSD 写共用同一 UART，顺序执行。 */
         msp_packet_t reply;
         msp_decoder_init(&s_msp.dec);   /* 安全复位解析状态机 */
         if (msp_host_request(&s_msp, MSP_RC, NULL, 0, &reply, 50) == MSP_HOST_OK) {
@@ -458,20 +600,7 @@ static void osd_task(void *arg)
             }
         }
 
-        /* OSD 文本写保持 ~1Hz（OSD_UPDATE_MS）。 */
-        TickType_t now = xTaskGetTickCount();
-        if (now - last_osd >= pdMS_TO_TICKS(OSD_UPDATE_MS)) {
-            last_osd = now;
-            s_batt_blink_on = !s_batt_blink_on;
-            camera_state_refresh();
-            const camera_state_t *st = camera_state_get();
-
-            char msgs[OSD_CUSTOM_MSG_COUNT][OSD_CUSTOM_MSG_MAX_LEN + 1];
-            compose_osd(st, msgs);
-            send_osd_msgs(msgs);
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(OSD_POLL_MS));
     }
 }
 

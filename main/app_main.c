@@ -18,6 +18,7 @@
  */
 
 #include "freertos/FreeRTOS.h"
+#include "esp_log.h"
 
 #include "camera_backend.h"
 #include "controller.h"
@@ -28,10 +29,11 @@
 #include "ble_common.h"
 #include "pairing.h"
 #include "channel_map.h"
-#include "profile.h"
 #include "web_server.h"
 #include "dji_backend.h"
 #include "insta360_backend.h"
+
+static const char *TAG = "APP";
 
 /**
  * @brief Main application function, performs initialization and task loop
@@ -62,11 +64,17 @@ void app_main(void) {
     if (ble_stack_init() != 0) {
         return;
     }
-    /* 注册后端 + 统一控制工作队列 */
+    /* 注册后端 + 统一控制工作队列 + 对频编排 */
     dji_backend_register();
     insta360_backend_register();
-    controller_init();
-    pairing_init();
+    if (controller_init() != 0) {
+        ESP_LOGE(TAG, "controller init failed");
+        return;
+    }
+    if (pairing_init() != 0) {
+        ESP_LOGE(TAG, "pairing init failed");
+        return;
+    }
 
     if (!camera_backend_is_paired()) {
         /* 首次上电未对频：自动进入对频扫描，识别到即运行时切换（不阻塞、不重启） */
@@ -86,9 +94,8 @@ void app_main(void) {
     /* Start MSP/OSD task to write camera state to the FC OSD (both protocols) */
     osd_logic_init();
 
-    /* 通道映射 + profile + WebUI（WiFi AP + HTTP） */
+    /* 通道映射 + WebUI（WiFi AP + HTTP） */
     channel_map_init();
-    profile_init();
     web_server_init();
 
     // ===== Subsequent logic loop =====

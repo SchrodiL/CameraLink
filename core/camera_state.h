@@ -32,6 +32,16 @@ typedef enum {
     CAM_CONN_CONNECTED,         /* 已连接就绪 */
 } camera_conn_phase_t;
 
+/* 电量文字档位：相机只按挡位上报电量时（insta360），OSD 显示档位词而不是百分比。
+ * 有精确百分比的情况（DJI）用 BATT_LABEL_NONE，照常显示数字。 */
+typedef enum {
+    BATT_LABEL_NONE = 0,   /* 无档位概念，显示百分比 */
+    BATT_LABEL_FULL,       /* FULL   75~100% */
+    BATT_LABEL_HIGH,       /* HIGH   50~74%  */
+    BATT_LABEL_MEDIUM,     /* MEDIUM 25~49%  */
+    BATT_LABEL_LOW,        /* LOW    0~24%   */
+} battery_label_t;
+
 /* 归一化后的相机状态（所有字段按统一语义填写） */
 typedef struct {
     camera_protocol_t protocol;   /* 当前协议 */
@@ -51,7 +61,10 @@ typedef struct {
     double   lat;                 /* 纬度 (度) */
     double   lon;                 /* 经度 (度) */
 
-    uint8_t  battery_pct;         /* 电量百分比 0-100（insta360 为 0） */
+    uint8_t  battery_pct;         /* 电量百分比下界 0-100 */
+    uint8_t  battery_hi;          /* 电量百分比上界；0 或等于下界 = 无区间（精确值） */
+    battery_label_t battery_label;/* 电量文字档位；BATT_LABEL_NONE = 用百分比 */
+    bool     charging;            /* 正在充电（insta360 由心跳包判定；DJI 暂不提供） */
     uint8_t  res;                 /* 录制分辨率（DJI video_resolution 枚举） */
     uint8_t  fps_idx;             /* 帧率（DJI fps_idx 枚举） */
     uint8_t  photo_ratio;         /* 拍照比例（0-4:3，1-16:9） */

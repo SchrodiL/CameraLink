@@ -1,5 +1,8 @@
 # Osmo Action GPS 蓝牙遥控器 (ESP32-C6-Example)
 
+> 📌 **这是上游 DJI demo 的原始说明，保留供参考**（`docs/` 里有文档引用它的硬件连线图等章节）。
+> 本仓库现在的项目说明请看 **[README.md](README.md)**。
+
   ![](https://img.shields.io/badge/version-V1.0.0-red.svg) ![](https://img.shields.io/badge/platform-rtos-blue.svg) ![](https://img.shields.io/badge/license-MIT-purple.svg)
 
 <p align="center">

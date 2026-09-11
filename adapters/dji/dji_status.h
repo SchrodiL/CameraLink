@@ -35,6 +35,9 @@ extern uint16_t current_real_time_countdown;
 extern uint32_t current_photo_countdown_ms;
 extern bool camera_status_initialized;
 extern uint8_t current_camera_bat_percentage;
+/* 相机电源模式（0=正常工作，3=睡眠）。由状态推送 1D02/1D06 回报，
+ * 是睡眠/唤醒的**状态依据**：遥控据此知道该发哪个方向，无需盲目 toggle。 */
+extern uint8_t current_camera_power_mode;
 extern uint32_t current_remain_capacity;
 extern uint32_t current_remain_time;
 extern uint32_t current_remain_photo_num;

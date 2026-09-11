@@ -140,12 +140,24 @@ static void gattc_event_handler(esp_gattc_cb_event_t event,
                                 esp_gatt_if_t gattc_if,
                                 esp_ble_gattc_cb_param_t *param);
 
+static TimerHandle_t scan_timer;
+
+void scan_stop_timer_callback(TimerHandle_t xTimer) {
+    esp_ble_gap_stop_scanning();
+    ESP_LOGI(TAG, "Scan stopped after timeout");
+}
+
 static void trigger_scan_task(void) {
     ESP_LOGI(TAG, "esp_ble_gap_start_scanning...");
-    // 无限扫描（duration=0），直到在 SCAN_RESULT 里发现目标设备后主动停止
-    esp_err_t ret = esp_ble_gap_start_scanning(0);
+    esp_err_t ret = esp_ble_gap_start_scanning(4);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start scanning: %s", esp_err_to_name(ret));
+    }
+    // Start a timer to stop scanning after 4 seconds
+    // 启动定时器，在4秒后停止扫描
+    scan_timer = xTimerCreate("scan_timer", pdMS_TO_TICKS(4000), pdFALSE, (void *)0, scan_stop_timer_callback);
+    if (scan_timer != NULL) {
+        xTimerStart(scan_timer, 0);
     }
 }
 
@@ -310,6 +322,10 @@ esp_err_t ble_reconnect(void) {
 }
 
 esp_err_t ble_load_saved_peer(void) {
+    /* RAM 里已经有地址（例如对频刚扫描到的）时保留它，不要被 NVS 里的旧值覆盖。 */
+    if (ble_has_saved_peer()) {
+        return ESP_OK;
+    }
     esp_bd_addr_t addr = {0};
     esp_err_t err = ble_load_peer_addr(addr);
     if (err != ESP_OK) {
@@ -319,6 +335,19 @@ esp_err_t ble_load_saved_peer(void) {
     ESP_LOGI(TAG, "Loaded saved peer MAC: %02X:%02X:%02X:%02X:%02X:%02X",
              addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
     return ESP_OK;
+}
+
+/* 只在 RAM 里记录对端地址（GAP/GATTC 回调可安全调用，不做 flash 写）。 */
+void ble_note_peer_addr(const esp_bd_addr_t addr) {
+    memcpy(s_ble_profile.remote_bda, addr, sizeof(esp_bd_addr_t));
+}
+
+/* 把当前 RAM 里的对端地址落盘。必须在任务上下文调用，不可在 BT 回调里调用。 */
+esp_err_t ble_persist_peer_addr(void) {
+    if (!ble_has_saved_peer()) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return ble_save_peer_addr(s_ble_profile.remote_bda);
 }
 
 bool ble_has_saved_peer(void) {
@@ -586,9 +615,7 @@ void ble_client_gap_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t
                 // 在重连模式下，比对设备地址
                 if (memcmp(best_addr, r->scan_rst.bda, sizeof(esp_bd_addr_t)) == 0) {
                     s_found_previous_device = true;
-                    best_rssi = r->scan_rst.rssi;  // 让 SCAN_STOP 的外层判断通过
                     ESP_LOGI(TAG, "Found previous device: %s, RSSI: %d", adv_name_str, r->scan_rst.rssi);
-                    esp_ble_gap_stop_scanning();
                 }
             } else {
                 // In normal scan mode, record the device with the strongest signal
@@ -598,8 +625,6 @@ void ble_client_gap_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t
                     memcpy(best_addr, r->scan_rst.bda, sizeof(esp_bd_addr_t));
                     strncpy(s_remote_device_name, adv_name_str, sizeof(s_remote_device_name) - 1);
                     s_remote_device_name[sizeof(s_remote_device_name) - 1] = '\0';
-                    // 找到符合条件的设备，立即停止扫描，SCAN_STOP 回调里会发起连接
-                    esp_ble_gap_stop_scanning();
                 }
             }
         }
@@ -631,8 +656,9 @@ static void gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_
         s_ble_profile.conn_id = param->connect.conn_id;
         s_ble_profile.connection_status.is_connected = true;
         memcpy(s_ble_profile.remote_bda, param->connect.remote_bda, sizeof(esp_bd_addr_t));
-        /* 持久化地址，供下次上电自动重连 */
-        ble_save_peer_addr(param->connect.remote_bda);
+        /* 注意：切勿在本回调里写 NVS。BT 回调中做 flash 擦写会阻塞 bluedroid 任务，
+         * 使紧随其后的 MTU 请求被拖延，连接建立阶段就因监督超时被相机断开。
+         * 地址落盘改到任务上下文（见 ble_persist_peer_addr 的调用点）。 */
         ESP_LOGI(TAG, "Connected, conn_id=%d", s_ble_profile.conn_id);
 
         ESP_LOGI(TAG, "Connect to camera MAC: %02X:%02X:%02X:%02X:%02X:%02X", 

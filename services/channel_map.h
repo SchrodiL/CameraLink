@@ -11,23 +11,21 @@
  *
  * 通过 MSP 从飞控读取 16 个 RC 通道值（1000..2000us），把每个「功能」绑定到
  * 一个 (通道, 值范围 [min,max])：通道值落在范围内即激活该功能。
- * 语义：
- *   - CHAN_FUNC_RECORD 是状态型：进入范围=开始录制，离开范围=停止录制。
- *   - 其余是边沿触发：进入范围触发一次。
- *
- * 映射关系与当前激活的 profile 联动：profile 切换会用 profile 内的快照覆盖
- * 这里的 live 绑定（见 profile.h）。
+ * 全部功能都是**边沿触发**：进入范围触发一次。录制/拍照是开是停由相机自己决定，
+ * 遥控只负责「按一下」—— 和按本机 BOOT 键走同一条路径（controller_single_press）。
  */
 
 typedef enum {
     CHAN_FUNC_NONE = 0,
-    CHAN_FUNC_RECORD,         /* 状态型：范围内=录制，范围外=停止 */
-    CHAN_FUNC_SHUTTER,        /* 边沿：快门/拍照 */
-    CHAN_FUNC_PROTO_SWITCH,   /* 边沿：DJI <-> insta360 */
-    CHAN_FUNC_PAIRING,        /* 边沿：触发对频 */
-    CHAN_FUNC_PROFILE_1,      /* 边沿：切换到 profile 1 */
-    CHAN_FUNC_PROFILE_2,      /* 边沿：切换到 profile 2 */
-    CHAN_FUNC_PROFILE_3,      /* 边沿：切换到 profile 3 */
+    CHAN_FUNC_SHUTTER,         /* 边沿：快门/录制开关（按一下，录/停/拍照由相机决定） */
+    CHAN_FUNC_PROTO_SWITCH,    /* 边沿：DJI <-> insta360 */
+    CHAN_FUNC_PAIRING,         /* 边沿：触发对频 */
+    CHAN_FUNC_CAMERA_PRESET,   /* 边沿：切换「相机端」预设（由相机快速切换列表决定） */
+    /* 电源类。只能追加在末尾 —— 绑定数组按枚举值索引，中间插入会让已存的
+     * NVS 配置整体错位。 */
+    CHAN_FUNC_SLEEP_WAKE,      /* 边沿：睡眠/唤醒 */
+    CHAN_FUNC_POWER_OFF,       /* 边沿：关机（仅 insta360 支持） */
+    CHAN_FUNC_WAKE_BEACON,     /* 边沿：深度唤醒（相机已关机时广播信标） */
     CHAN_FUNC_COUNT
 } channel_func_t;
 

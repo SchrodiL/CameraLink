@@ -14,7 +14,8 @@
  * 无需重启（OSD 任务下一轮刷新即应用）。
  */
 
-/* OSD 可显示的内容类型（内容池） */
+/* OSD 可显示的内容类型（内容池）。
+ * 只能追加在末尾：槽位配置按枚举值索引存在 NVS 里，中间插入会让已存配置错位。 */
 typedef enum {
     OSD_ITEM_REC,         /* 录制状态 + 时长 */
     OSD_ITEM_GPS,             /* GPS 卫星数 */
@@ -22,6 +23,10 @@ typedef enum {
     OSD_ITEM_BATTERY,         /* 相机电量百分比 */
     OSD_ITEM_SPEC,            /* 录制规格（分辨率/帧率） */
     OSD_ITEM_NAME_STORAGE,    /* 相机名称 + 剩余容量 */
+    /* 经纬度分两条：一条消息只有 16 字符，合在一起小数位要压缩到 3 位（约 110m），
+     * 分开后各自能用满，精度到 6 位（约 0.1m）。*/
+    OSD_ITEM_GPS_LAT,         /* GPS 纬度 */
+    OSD_ITEM_GPS_LON,         /* GPS 经度 */
     OSD_ITEM_COUNT
 } osd_item_t;
 

@@ -18,7 +18,9 @@
 #include "esp_ota_ops.h"
 #include "lwip/sockets.h"
 #include "nvs.h"
+#include "nvs_flash.h"
 #include "nvs_util.h"
+#include "esp_system.h"
 #include "cJSON.h"
 
 #include "camera_state.h"
@@ -27,7 +29,6 @@
 #include "controller.h"
 #include "pairing.h"
 #include "channel_map.h"
-#include "profile.h"
 #include "light.h"
 
 static const char *TAG = "WEB";
@@ -96,7 +97,6 @@ static esp_err_t status_handler(httpd_req_t *req) {
     cJSON_AddNumberToObject(root, "protocol", camera_backend_active_id());
     cJSON_AddBoolToObject(root, "paired", camera_backend_is_paired());
     cJSON_AddBoolToObject(root, "pairing", pairing_is_active());
-    cJSON_AddNumberToObject(root, "active_profile", profile_get_active());
     cJSON_AddBoolToObject(root, "wifi_on", s_wifi_on);
     cJSON_AddNumberToObject(root, "wifi_auto_delay", s_auto_delay);
 
@@ -176,9 +176,9 @@ static esp_err_t protocol_put_handler(httpd_req_t *req) {
         backend_id_t m = (mode->valueint == 1) ? BACKEND_INSTA360 : BACKEND_DJI;
         controller_switch_protocol(m);
         if (m == BACKEND_INSTA360) {
-            light_logic_flash(0, 13, 0, 2);    /* 绿灯双闪 */
+            light_logic_flash(0, 13, 0, 2);    /* 绿灯双闪 = insta360 */
         } else {
-            light_logic_flash(13, 13, 0, 2);   /* 黄灯双闪 */
+            light_logic_flash(13, 0, 0, 2);    /* 红灯双闪 = DJI */
         }
     }
     cJSON_Delete(body);
@@ -246,78 +246,6 @@ static esp_err_t chmap_put_handler(httpd_req_t *req) {
     }
     channel_map_set_bindings(b);
 
-    cJSON_Delete(body);
-    cJSON *ok = cJSON_CreateObject();
-    cJSON_AddBoolToObject(ok, "ok", true);
-    return send_json(req, ok);
-}
-
-/* GET /api/profile */
-static esp_err_t profile_get_handler(httpd_req_t *req) {
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddNumberToObject(root, "active", profile_get_active());
-    cJSON *arr = cJSON_CreateArray();
-    for (int i = 0; i < PROFILE_COUNT; i++) {
-        profile_t p;
-        bool ok = profile_load(i, &p);
-        cJSON *it = cJSON_CreateObject();
-        cJSON_AddNumberToObject(it, "index", i);
-        cJSON_AddBoolToObject(it, "saved", ok);
-        if (ok) {
-            cJSON *slots = cJSON_CreateArray();
-            for (int j = 0; j < OSD_SLOT_COUNT; j++) cJSON_AddItemToArray(slots, cJSON_CreateNumber(p.slots[j]));
-            cJSON_AddItemToObject(it, "slots", slots);
-            cJSON_AddNumberToObject(it, "batt_alarm", p.batt_alarm);
-        }
-        cJSON_AddItemToArray(arr, it);
-    }
-    cJSON_AddItemToObject(root, "profiles", arr);
-    return send_json(req, root);
-}
-
-/* PUT /api/profile  body {"index":0,"profile":{"slots":[...],"batt_alarm":N}} */
-static esp_err_t profile_put_handler(httpd_req_t *req) {
-    cJSON *body = read_json_body(req);
-    if (!body) { httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json"); return ESP_FAIL; }
-
-    cJSON *idx = cJSON_GetObjectItem(body, "index");
-    cJSON *prof = cJSON_GetObjectItem(body, "profile");
-    if (cJSON_IsNumber(idx) && cJSON_IsObject(prof)) {
-        profile_t p;
-        profile_from_live(&p);
-        cJSON *slots = cJSON_GetObjectItem(prof, "slots");
-        if (cJSON_IsArray(slots) && cJSON_GetArraySize(slots) == OSD_SLOT_COUNT) {
-            for (int i = 0; i < OSD_SLOT_COUNT; i++) {
-                cJSON *it = cJSON_GetArrayItem(slots, i);
-                int v = cJSON_IsNumber(it) ? it->valueint : 0;
-                p.slots[i] = (v >= 0 && v < OSD_ITEM_COUNT) ? (osd_item_t)v : OSD_ITEM_REC;
-            }
-        }
-        cJSON *batt = cJSON_GetObjectItem(prof, "batt_alarm");
-        if (cJSON_IsNumber(batt)) {
-            int v = batt->valueint;
-            if (v < 0) v = 0;
-            if (v > 100) v = 100;
-            p.batt_alarm = (uint8_t)v;
-        }
-        int i = idx->valueint;
-        if (i >= 0 && i < PROFILE_COUNT) profile_save((uint8_t)i, &p);
-    }
-
-    cJSON_Delete(body);
-    cJSON *ok = cJSON_CreateObject();
-    cJSON_AddBoolToObject(ok, "ok", true);
-    return send_json(req, ok);
-}
-
-/* POST /api/profile/activate  body {"index":0} */
-static esp_err_t profile_activate_handler(httpd_req_t *req) {
-    cJSON *body = read_json_body(req);
-    if (!body) { httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json"); return ESP_FAIL; }
-    cJSON *idx = cJSON_GetObjectItem(body, "index");
-    if (cJSON_IsNumber(idx) && idx->valueint >= 0 && idx->valueint < PROFILE_COUNT) {
-        profile_set_active((uint8_t)idx->valueint);
-    }
     cJSON_Delete(body);
     cJSON *ok = cJSON_CreateObject();
     cJSON_AddBoolToObject(ok, "ok", true);
@@ -573,6 +501,26 @@ static void dns_server_task(void *arg) {
     close(sock);
 }
 
+/* POST /api/factory-reset —— 恢复默认设置：清空全部设置后重启。
+ *
+ * 直接擦掉整个 NVS 分区：6 个命名空间（协议 / 对频 / 通道映射 / insta360 /
+ * OSD / WiFi）一次清干净，不必逐个删键，将来新增的设置项也不会被漏掉。 */
+static esp_err_t factory_reset_handler(httpd_req_t *req) {
+    ESP_LOGW(TAG, "factory reset requested: erasing NVS and rebooting");
+
+    cJSON *ok = cJSON_CreateObject();
+    cJSON_AddBoolToObject(ok, "ok", true);
+    esp_err_t err = send_json(req, ok);
+
+    /* 先把响应发出去再擦写：擦除 + 重启很快，等浏览器收到 200 才开始动手，
+     * 前端就不会把「连接中断」误判成失败。 */
+    vTaskDelay(pdMS_TO_TICKS(300));
+    nvs_flash_erase();
+    esp_restart();
+
+    return err;   /* 走不到，仅为消除「缺返回值」告警 */
+}
+
 static void dns_server_init(void) {
     xTaskCreate(dns_server_task, "dns_server", 4096, NULL, 5, NULL);
 }
@@ -596,14 +544,12 @@ static void register_handlers(httpd_handle_t server) {
     URI("/api/pairing/stop",     pairing_stop_handler,    HTTP_POST);
     URI("/api/chmap",            chmap_get_handler,       HTTP_GET);
     URI("/api/chmap",            chmap_put_handler,       HTTP_PUT);
-    URI("/api/profile",          profile_get_handler,     HTTP_GET);
-    URI("/api/profile",          profile_put_handler,     HTTP_PUT);
-    URI("/api/profile/activate", profile_activate_handler, HTTP_POST);
     URI("/api/ota",              ota_handler,             HTTP_POST);
     URI("/api/config/backup",    backup_handler,          HTTP_GET);
     URI("/api/config/restore",   restore_handler,         HTTP_POST);
     URI("/api/wifi",             wifi_get_handler,        HTTP_GET);
     URI("/api/wifi",             wifi_put_handler,        HTTP_PUT);
+    URI("/api/factory-reset",    factory_reset_handler,   HTTP_POST);
     URI("/*",                    captive_handler,         HTTP_GET);
 
 #undef URI
@@ -696,19 +642,27 @@ bool web_server_wifi_is_on(void) {
     return s_wifi_on;
 }
 
-/* 自动开 WiFi：上电后等待 auto_delay 秒，期间若相机连接成功则取消，否则自动开 WiFi */
+/* 自动开 WiFi：上电后等待 auto_delay 秒，期间若相机连接成功则取消，否则自动开 WiFi。
+ * 注意：任务函数绝不能 return —— FreeRTOS 会在 return 时 panic_abort("should not return")。
+ * 结束必须用 vTaskDelete(NULL)。 */
 static void auto_wifi_task(void *arg) {
     (void)arg;
     uint32_t delay = s_auto_delay;
     for (uint32_t i = 0; i < delay; i++) {
         vTaskDelay(pdMS_TO_TICKS(1000));
-        if (camera_state_get()->connected) {
+        /* 直接问活动后端，不依赖 camera_state 缓存（该缓存由 OSD 任务周期刷新，
+         * 一旦 OSD 任务被拖住就会误判为「未连接」，进而错误地停掉相机连接）。 */
+        const camera_backend_t *be = camera_backend_active();
+        bool connected = (be != NULL && be->is_connected != NULL) ? be->is_connected() : false;
+        if (connected) {
             ESP_LOGI(TAG, "camera connected within %lu s, skip auto-WiFi start", (unsigned long)(i + 1));
-            return;
+            vTaskDelete(NULL);
+            return;  /* 保险：vTaskDelete 之后不会执行到这里，避免编译器告警 */
         }
     }
     web_server_wifi_on();
     ESP_LOGI(TAG, "auto-WiFi: no camera connection for %lu s, AP started", (unsigned long)delay);
+    vTaskDelete(NULL);
 }
 
 /* 自动关 WiFi：WiFi 打开后若 auto_delay 秒内无 STA（手机/电脑）连接则自动关闭 */

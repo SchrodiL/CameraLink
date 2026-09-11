@@ -43,6 +43,15 @@ typedef struct camera_backend {
     void (*shutter)(void);        /* 快门 / 拍照 */
     void (*record_start)(void);
     void (*record_stop)(void);
+    void (*preset_next)(void);    /* 切换「相机端」预设（非控制器端），不支持则为 NULL */
+
+    /* 电源类动作（可能阻塞，同样由 controller 工作队列串行执行；不支持则为 NULL）。
+     *   sleep_wake  —— 睡眠/唤醒切换；链路保持，方向由相机当前状态决定
+     *   power_off   —— 关机；相机会主动断开 BLE 链路
+     *   wake_beacon —— 相机已关机时的深度唤醒：广播信标直到相机连回（阻塞至连上或超时） */
+    void (*sleep_wake)(void);
+    void (*power_off)(void);
+    void (*wake_beacon)(void);
 
     /* 采样本后端状态，写入协议无关缓存（连接阶段由核心统一计算）。 */
     void (*refresh_state)(camera_state_t *st);

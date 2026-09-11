@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include "esp_gap_ble_api.h"
 
+#include "camera_state.h"   /* battery_label_t */
+
 /*
  * insta360 remote logic (BLE GATT server role).
  * insta360 遥控器逻辑（BLE 从机角色）。
@@ -29,10 +31,16 @@ int insta360_logic_init(bool do_name_scan);
 /* Send shutter toggle command. */
 void insta360_logic_shutter(void);
 
-/* Send sleep (power off) command. */
-void insta360_logic_sleep(void);
+/* 切换「相机端」预设/模式（通用「下一个模式」键，目标由相机决定）。 */
+void insta360_logic_mode_next(void);
 
-/* Send wake-up iBeacon advertisement (~3s). */
+/* 睡眠/唤醒切换（BLE 链路保持）。同一个码，由相机当前状态决定睡还是醒。 */
+void insta360_logic_sleep_wake(void);
+
+/* 关机：相机会主动断开 BLE 链路。 */
+void insta360_logic_power_off(void);
+
+/* 深度唤醒：相机已关机时广播 iBeacon，一直发到相机连回为止（上限 15 秒）。 */
 void insta360_logic_wake(void);
 
 /* Set the wake payload (6 ASCII chars = camera BLE name suffix) and persist to NVS.
@@ -51,6 +59,9 @@ uint32_t insta360_get_recording_seconds(void);
 /* Camera mode description string (e.g. "4K|30|DEW"), empty if unknown. */
 const char *insta360_get_mode_str(void);
 
+/* 当前拍摄模式的 OSD 名称（如 "SLOWMO"/"TIMELAPSE"）；未确认的模式码返回 NULL。 */
+const char *insta360_get_mode_name(void);
+
 /* Remaining recording time in minutes (0 if unknown). */
 uint32_t insta360_get_remain_minutes(void);
 
@@ -59,6 +70,18 @@ uint32_t insta360_get_remain_photos(void);
 
 /* Camera battery percentage 0-100 (0 if unknown). */
 uint8_t insta360_get_battery_pct(void);
+
+/* 电量区间上界。相机按挡位上报电量，get_battery_pct() 是下界、本函数是上界，
+ * 两者构成完整区间（如 25~49%）。无区间信息时为 0。 */
+uint8_t insta360_get_battery_hi(void);
+
+/* 电量文字档位（FULL/HIGH/MEDIUM/LOW），供 OSD 显示。
+ * 无档位信息时返回 BATT_LABEL_NONE。 */
+battery_label_t insta360_get_battery_label(void);
+
+/* 相机是否正在充电。充电时相机不上报电量档位，只发固定标记值，
+ * 因此此时 get_battery_pct() 的值不可信，应显示充电状态。 */
+bool insta360_is_charging(void);
 
 /* Camera model name (e.g. "Ace Pro 2"), empty if unknown. */
 const char *insta360_get_model(void);

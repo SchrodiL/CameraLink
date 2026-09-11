@@ -225,6 +225,10 @@ static inline uint16_t msp_build_custom_msg(uint8_t *dst, uint8_t msg_idx, const
 #define MSP_OSD_SYM_MAIN_BATT   0x97
 #define MSP_OSD_SYM_REC         0x09   /* 录像(REC)图标 */
 
+/* 经纬度标志字形（Betaflight osd_symbols.h 的 SYM_LAT / SYM_LON）。 */
+#define MSP_OSD_SYM_LAT         0x89
+#define MSP_OSD_SYM_LON         0x98
+
 /* GPS / 速度 / 海拔图标字形字节。
  * 对应 Betaflight osd_symbols.h 的 SYM_SAT_L / SYM_SPEED / SYM_ALTITUDE。
  * 注意 0x70 落在可打印 ASCII 区间（原 'p' 位），sanitize 天然放行。 */
@@ -237,7 +241,8 @@ static inline bool msp_osd_sym_ok(unsigned char c)
 {
     if (c >= 0x20 && c <= 0x7E) return true; /* 可打印 ASCII */
     if (c >= MSP_OSD_SYM_BATT_FULL && c <= MSP_OSD_SYM_MAIN_BATT) return true;
-    return c == MSP_OSD_SYM_SAT || c == MSP_OSD_SYM_ALTITUDE || c == MSP_OSD_SYM_REC;
+    return c == MSP_OSD_SYM_SAT || c == MSP_OSD_SYM_ALTITUDE || c == MSP_OSD_SYM_REC ||
+           c == MSP_OSD_SYM_LAT || c == MSP_OSD_SYM_LON;
 }
 
 /* 把文本过滤成 OSD 字体能显示的字形。

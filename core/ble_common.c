@@ -3,6 +3,7 @@
 #include "esp_bt.h"
 #include "esp_bt_main.h"
 #include "esp_gap_ble_api.h"
+#include "esp_gatt_common_api.h"
 #include "nvs_util.h"
 
 #include "ble_common.h"
@@ -63,7 +64,10 @@ int ble_stack_init(void) {
         return -1;
     }
 
-    esp_ble_gap_set_device_name("Insta360 GPS Remote");
+    /* 本地 MTU 提升到 500：默认 23 字节会让相机下发的状态串/协议包被碎片化，
+     * 既慢又容易在弱信号下丢包。原先只在 DJI 角色的 ble_init() 里设置，
+     * insta360 角色（GATTS 从机）走不到那里，所以统一放到栈初始化里。 */
+    esp_ble_gatt_set_local_mtu(500);
 
     ret = esp_ble_gap_register_callback(ble_stack_gap_handler);
     if (ret) {

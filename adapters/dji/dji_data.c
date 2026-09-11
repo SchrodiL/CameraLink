@@ -99,6 +99,9 @@ static entry_t s_entries[MAX_SEQ_ENTRIES];
 /* Mutex to protect s_seq_entries */
 static SemaphoreHandle_t s_map_mutex = NULL;
 
+/* 保护 ref_count 的临界区：取不到互斥锁时用它归还引用，避免槽位永久泄漏。 */
+static portMUX_TYPE s_ref_lock = portMUX_INITIALIZER_UNLOCKED;
+
 /* 定时器句柄 */
 /* Timer handle */
 static TimerHandle_t cleanup_timer = NULL;
@@ -219,15 +222,18 @@ static void free_entry(entry_t *entry) {
     if (!entry) {
         return;
     }
+    /* 仍有等待者持有引用：不改动任何字段，等它归还引用时再走到这里。
+     * 保持 in_use=true，使清理定时器/淘汰逻辑之后仍能回收该槽位。 */
+    if (entry->ref_count > 0) {
+        return;
+    }
     entry->in_use = false;
     entry->is_seq_based = false;
     entry->seq = 0;
     entry->cmd_set = 0;
     entry->cmd_id = 0;
     entry->last_access_time = 0;
-    if (entry->ref_count == 0) {
-        entry_physical_free(entry);
-    }
+    entry_physical_free(entry);
 }
 
 /**
@@ -239,6 +245,26 @@ static void entry_consume(entry_t *entry) {
         entry->ref_count--;
     }
     free_entry(entry);
+}
+
+/**
+ * @brief 归还等待者引用（可在持锁或不持锁时调用）
+ *
+ * 取到互斥锁时走 entry_consume 完成逻辑+物理释放；取锁失败时至少在临界区归还引用，
+ * 否则 ref_count 会永久停在 1，而分配器只复用 ref_count==0 的槽位 —— 该槽位从此报废
+ * （总共只有 MAX_SEQ_ENTRIES 个，累计耗尽后所有命令都发不出去）。
+ */
+static void entry_release(entry_t *entry) {
+    if (xSemaphoreTake(s_map_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        entry_consume(entry);
+        xSemaphoreGive(s_map_mutex);
+        return;
+    }
+    portENTER_CRITICAL(&s_ref_lock);
+    if (entry->ref_count > 0) {
+        entry->ref_count--;
+    }
+    portEXIT_CRITICAL(&s_ref_lock);
 }
 
 /**
@@ -715,10 +741,7 @@ esp_err_t data_wait_for_result_by_seq(uint16_t seq, int timeout_ms, void **out_r
             // 等待信号量被释放
             if (xSemaphoreTake(entry->sem, timeout_ticks) != pdTRUE) {
                 ESP_LOGW(TAG, "Wait for seq=0x%04X timed out", seq);
-                if (xSemaphoreTake(s_map_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                    entry_consume(entry);
-                    xSemaphoreGive(s_map_mutex);
-                }
+                entry_release(entry);
                 return ESP_ERR_TIMEOUT;
             }
 
@@ -730,10 +753,7 @@ esp_err_t data_wait_for_result_by_seq(uint16_t seq, int timeout_ms, void **out_r
                 *out_result = malloc(entry->parse_result_length);
                 if (*out_result == NULL) {
                     ESP_LOGE(TAG, "Failed to allocate memory for out_result");
-                    if (xSemaphoreTake(s_map_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                        entry_consume(entry);
-                        xSemaphoreGive(s_map_mutex);
-                    }
+                    entry_release(entry);
                     return ESP_ERR_NO_MEM;
                 }
 
@@ -744,19 +764,13 @@ esp_err_t data_wait_for_result_by_seq(uint16_t seq, int timeout_ms, void **out_r
                                                                  // 设置长度
             } else {
                 ESP_LOGE(TAG, "Parse result is NULL for seq=0x%04X", seq);
-                if (xSemaphoreTake(s_map_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                    entry_consume(entry);
-                    xSemaphoreGive(s_map_mutex);
-                }
+                entry_release(entry);
                 return ESP_ERR_NOT_FOUND;
             }
 
             // Free entry
             // 释放条目
-            if (xSemaphoreTake(s_map_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                entry_consume(entry);
-                xSemaphoreGive(s_map_mutex);
-            }
+            entry_release(entry);
 
             return ESP_OK;
         }
@@ -864,10 +878,7 @@ esp_err_t data_wait_for_result_by_cmd(uint8_t cmd_set, uint8_t cmd_id, int timeo
                 ESP_LOGW(TAG, "Wait for cmd_set=0x%04X cmd_id=0x%04X timed out", cmd_set, cmd_id);
                 // Try to clean up the entry if it still exists
                 // 尝试清理条目（如果仍然存在）
-                if (xSemaphoreTake(s_map_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                    entry_consume(entry);
-                    xSemaphoreGive(s_map_mutex);
-                }
+                entry_release(entry);
                 return ESP_ERR_TIMEOUT;
             }
 
@@ -875,7 +886,7 @@ esp_err_t data_wait_for_result_by_cmd(uint8_t cmd_set, uint8_t cmd_id, int timeo
             // 重新获取互斥锁以获取结果
             if (xSemaphoreTake(s_map_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
                 ESP_LOGE(TAG, "Failed to take mutex after semaphore wait");
-                entry->ref_count--;  /* 罕见路径：尽力归还引用，避免永久泄漏 */
+                entry_release(entry);
                 return ESP_ERR_INVALID_STATE;
             }
 

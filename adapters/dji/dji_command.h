@@ -55,4 +55,8 @@ key_report_response_frame_t* command_logic_key_report_qs(void);
 
 key_report_response_frame_t* command_logic_key_report_snapshot(void);
 
+/* 设置相机电源模式（睡眠/唤醒）。power_mode 取 CAMERA_POWER_MODE_NORMAL / _SLEEP。
+ * 这是**绝对值**设置，不是 toggle —— 当前模式由状态推送的 power_mode 字段回报。 */
+camera_power_mode_switch_response_frame_t* command_logic_set_power_mode(uint8_t power_mode);
+
 #endif

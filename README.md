@@ -1,178 +1,166 @@
-# Osmo Action GPS Bluetooth Remote Controller (ESP32-C6-Example)
+# CamLink
 
-![](https://img.shields.io/badge/version-V1.0.0-red.svg) ![](https://img.shields.io/badge/platform-rtos-blue.svg) ![](https://img.shields.io/badge/license-MIT-purple.svg)
+**多设备相机控制器** —— 一块 ESP32-C6，同时控制 DJI 与 Insta360 运动相机，并把 GPS 数据推给飞控 OSD。
 
-<p align="center">
-  <br>English | <a href="README_CN.md">中文</a>
-</p>
+> 本项目 fork 自 DJI 官方 demo [`dji-sdk/Osmo-GPS-Controller-Demo`](https://github.com/dji-sdk/Osmo-GPS-Controller-Demo)。
+> 原项目是一个 DJI 专用的 Osmo Action 蓝牙快门遥控器；CamLink 把它重构成**协议无关的控制器核心 + 可插拔的协议后端**，
+> DJI 只是其中一个后端。
 
-## Introduction
+---
 
-This demo provides a set of code running on the ESP32-C6 development board (based on the ESP-IDF framework), demonstrating how to parse, process, and send the DJI R SDK protocol to control the camera. The example program implements basic remote control functions, including: long-pressing the BOOT button to connect to the nearest (compatible) Osmo Action / Osmo 360 device, single-clicking to control recording, quickly switching modes, and pushing GPS data based on the LC76G GNSS module. Additionally, the program dynamically adjusts the RGB LED display based on the device's status.
+## 它做什么
 
-Before reading this document and the code, it is recommended to first review the [Getting Started Guide](docs/getting_started_guide.md).
+一块挂在遥控器（或飞控）上的小板子，同时扮演两个角色：
 
-## Key Features
+**对相机** —— 通过 BLE 冒充官方遥控器，直接控制相机：
 
-- **Protocol Parsing**: The protocol layer demonstrates how to parse the DJI R SDK protocol, which is **platform-independent and easy to port to other development platforms**.
-- **GPS Data Push**: Collect GPS data at a 10Hz frequency using the LC76G GNSS module, parse it, and push it to the camera in real time.
-- **Button Support**: Supports single-click (start/stop recording) and long-press (search for and connect to the nearest camera) operations. In the program, the handling of the button operations is managed by `key_logic`.
-- **RGB LED Support**: Monitors the system status in real time and dynamically adjusts the RGB LED color based on status changes.
-- **Other Features**: Switch the camera to a specific mode, quick switch mode (QS), subscribe to camera status, query camera version, and more.
+| 功能 | DJI | Insta360 |
+|---|---|---|
+| 快门 / 录制开关 | ✅ | ✅ |
+| 切换拍摄模式 | ✅ | ✅ |
+| 切换相机端预设 | ✅ | ✅ |
+| 睡眠 / 唤醒 | ✅ | ✅ |
+| 关机 | ❌ 协议无此命令 | ✅ |
+| 深度唤醒（相机已关机） | ✅ 广播 | ✅ 唤醒信标 |
+| 电量 / 剩余容量 | ✅ 精确百分比 | ✅ 5 档位 + 充电状态 |
+| 拍摄规格 | ✅ | ✅ |
 
-## Development Environment
+**对飞控** —— 通过 MSP 往 Betaflight/INAV 的 OSD 推 4 条自定义文本（相机状态、电量、GPS 等），
+并读取 16 个 RC 通道来做功能映射。
 
-**Software**: ESP-IDF v6.0
+---
 
-**Hardware**:
+## 硬件
 
-- ESP32-C6-WROOM-1
-- LC76G GNSS Module
-- DJI Osmo 360 or DJI Osmo Action 6 / 5 Pro / 4
+- **主控**：ESP32-C6（RISC-V，ESP-IDF v6.0）
+- **GPS**：LC76G GNSS 模块（UBX/NMEA，接 UART）
+- **飞控**：任意支持 MSP 的 Betaflight/INAV 飞控（接 UART）
+- **按键**：BOOT 键（单击拍录 / 长按对频 / 双击切协议）
+- **指示灯**：板载 RGB LED
 
-The hardware connection involves the connection between the ESP32-C6-WROOM-1 and the LC76G GNSS Module. The specific connections are as follows:
+> 引脚定义见 `core/hardware_config.h`。
 
-- **ESP32-C6 GPIO5** connects to **LC76G RX**
-- **ESP32-C6 GPIO4** connects to **LC76G TX**
-- **ESP32-C6 5V** connects to **LC76G VCC**
-- **ESP32-C6 GND** connects to **LC76G GND**
+---
 
-Please ensure that the pins are correctly connected, especially the TX and RX pins, to ensure proper data transmission.
-
-<img title="Hardware Wiring Diagram" src="docs/images/hardware_wiring_diagram.png" alt="Hardware Wiring Diagram" data-align="center" width="711">
-
-## Quick Start
-
-* Install the ESP-IDF toolchain. For installation steps, refer to the documentation below. We recommend installing the ESP-IDF extension for VSCode. You can download the plugin here: [ESP-IDF Plugin - VSCode](https://marketplace.visualstudio.com/items?itemName=espressif.esp-idf-extension)
-
-* Next, check the `.vscode/settings.json` file in the demo to ensure that the IDF-related parameters are configured correctly.
-
-* After setting up the environment, compile and flash the code to the development board. Use the monitor to view real-time logs. You can check the current device state by observing the RGB light status on the development board: red indicates uninitialized, yellow indicates BLE initialization complete, and the device is ready.
-- When the BOOT button is long-pressed, the RGB LED flashes blue, indicating that it is searching for and connecting to the nearest Osmo Action device. A steady blue light indicates that BLE is connected, a steady green light indicates that the protocol is connected and commands can be sent and received, and a steady purple light indicates that the protocol is connected and GPS signal is available.
-
-- When the BOOT button is clicked, the camera starts or stops recording. During long recording sessions, the RGB LED will flash.
-
-## Demo Structure
+## 项目结构
 
 ```
-├── main/             # Application assembly (app_main + CMakeLists + web frontend)
-├── core/             # Protocol-agnostic controller core
-│                     #   camera_state / camera_backend / controller / pairing / ble_common
-├── adapters/         # Camera protocol backends (each implements camera_backend_t)
-│   ├── dji/          # DJI backend (GATTC master: BLE / data / protocol / command / connect / status)
-│   └── insta360/     # insta360 backend (GATTS slave)
-├── services/         # Protocol-agnostic features (GPS / OSD / channel map / profile / key / light / WebUI)
-├── shared/           # Shared utilities & camera-domain vocabulary (NVS helper / camera enums / CRC)
-├── components/msp/   # MSP flight-controller OSD component
-└── CMakeLists.txt    # Demo build file
+core/                协议无关的控制器核心
+  camera_backend.*     后端接口（vtable）+ 活动后端注册/切换
+  controller.*         统一命令门面 + 单一控制工作队列
+  camera_state.*       统一相机状态缓存
+  pairing.*            对频流程（委托给活动后端）
+  ble_common.*         BLE 栈统一拉起
+
+adapters/            协议后端 —— 新增一种设备 = 新写一个目录
+  dji/                 DJI R SDK 协议（GATTC 主机角色）
+  insta360/            Insta360 遥控协议（GATTS 从机角色）
+
+services/            协议无关功能
+  gps / osd / osd_config / channel_map / key / light / web_server
+
+shared/              通用工具（枚举、NVS、CRC）
+components/msp/      可复用的 MSP 协议组件
+main/                应用装配 + 内嵌 WebUI
 ```
 
-- **core**: Protocol-agnostic core — unified camera state cache (`camera_state`), camera backend interface (`camera_backend`), unified control worker queue (`controller`), pairing orchestration (`pairing`), BLE stack bring-up (`ble_common`).
-- **adapters**: Camera protocol backends, each implementing `camera_backend_t`; adding a new device = adding a new backend.
-- **services**: Protocol-agnostic controller features (GPS parsing, MSP OSD, RC channel map, profile, key, light, WebUI).
-- **shared**: Common utilities and shared camera-domain enums (mode/status/resolution/fps/eis).
-- **main**: The entry point and application assembly.
+**新增一种相机**只需要在 `adapters/` 下实现 `camera_backend_t` 那几个函数，核心逻辑不用动。
 
+---
 
-## Program Startup Sequence Diagram
+## 主要功能
 
-<img title="Program Startup Sequence Diagram" src="docs/images/sequence_diagram_of_program_startup.png" alt="Program Startup Sequence Diagram" data-align="center" width="761">
+### 相机控制
 
-## Protocol Parsing
+两种协议的角色正好相反，这是本项目最需要留意的差异：
 
-The following diagram illustrates the general process of frame parsing in the program:
+- **DJI** —— 模块是 GATT **主机**，主动扫描并连接相机（相机广播，我们连它）
+- **Insta360** —— 模块是 GATT **从机**，冒充官方遥控广播，等相机连进来
 
-<img title="Protocol Parsing Sequence Diagram" src="docs/images/sequence_diagram_of_protocol_parsing.png" alt="Protocol Parsing Sequence Diagram" data-align="center" width="500">
+> ⚠️ Insta360 侧**广播名必须是 `Insta360 GPS Remote`**。实测把名字改成别的相机就完全扫不到模块
+> （表现为「模块绿灯亮、相机连不上」）。相机是按名字精确匹配设备的，不是靠服务 UUID。
 
-For detailed documentation, please refer to: [Protocol Parsing Documentation](docs/protocol.md)
+### OSD
 
-### GPS Data Push Example
+通过 `MSP2_SET_TEXT` 往飞控发 4 条自定义文本，内容从内容池里任选：
 
-The GNRMC and GNGGA data from the LC76G GNSS module supports a maximum update frequency of 10Hz, provided that we send the corresponding command to the module:
+录制状态 · 相机电量 · 录制规格 · 相机名称+剩余容量 · GPS 卫星数 · 速度+海拔 · GPS 纬度 · GPS 经度
 
-```c
-// "$PAIR050,1000*12\r\n" for 1Hz update rate
-// "$PAIR050,500*26\r\n" for 5Hz update rate
-// "$PAIR050,100*22\r\n" for 10Hz update rate
-char* gps_command = "$PAIR050,100*22\r\n";  // (>1Hz only RMC and GGA supported)
-uart_write_bytes(UART_GPS_PORT, gps_command, strlen(gps_command));
+单条上限 16 字符，所以经纬度拆成了两条。
+
+### 通道映射
+
+Betaflight Modes 风格：每个功能选一个 RC 通道，再在行程条上拖出触发范围。
+
+- 行程条上两个蓝色手柄之间 = 触发范围，可拖手柄改两端、**拖中间整条平移**
+- 细竖线 = 通道当前位置，落进范围即高亮整个功能区
+- 下拉里选「自动检测…」后拨动开关，自动认出是哪个通道
+
+### WebUI
+
+板子自己开一个 WiFi 热点提供网页配置界面：状态、OSD 布局、协议切换、对频、WiFi 空闲、
+通道映射、固件刷写、配置备份/恢复、恢复默认设置。
+
+### 安全设计
+
+- **NVS 里绝不在 BLE 回调中写入** —— flash 写会阻塞蓝牙协议栈导致连接掉线，所有落盘都推迟到任务上下文
+- **控制动作统一走一个工作队列** —— 按键扫描和 OSD 任务绝不阻塞在 BLE 命令上
+- **配置带版本号** —— 功能枚举增删时换 NVS 键名，避免旧配置被按新索引**错位解读**
+
+---
+
+## 构建
+
+需要 **ESP-IDF v6.0**，目标芯片 `esp32c6`：
+
+```bash
+idf.py set-target esp32c6
+idf.py build
+idf.py -p <PORT> flash monitor
 ```
 
-When parsing a large number of similar strings to extract information such as latitude, longitude, and velocity components, it is necessary to filter out invalid data. To reduce inaccuracies caused by drift, positioning errors, and other factors, it is recommended to apply filtering and other necessary processing to the GPS data before sending it. This program currently does not focus on these issues in depth, but in the future, appropriate filtering algorithms and error correction mechanisms can be introduced as needed to ensure the accuracy and reliability of the data.
+首次构建会拉取 `managed_components/` 下的依赖。
 
-Since the parsing process is frequently executed, it is important to be mindful of potential watchdog timeouts during task execution. Therefore, `vTaskDelay` has been appropriately used in the program to reset the watchdog. This program uses a simple parsing method for data pushing demonstration. Please refer to the `Parse_NMEA_Buffer` and `gps_push_data` functions in `gps_logic`.
+---
 
-When GPS signal is available (indicated by the solid purple RGB light), video recording will begin, and after recording ends, the corresponding data can be viewed on the DJI Mimo app dashboard.
+## 协议文档
 
-## How to Add a Feature
+- **DJI R SDK** —— 见 `docs/`，来自上游官方文档
+- **Insta360 配件协议** —— 本项目通过 nRF52840 空口抓包逆向，独立仓库：
+  **[insta360-ble-protocol](https://github.com/SchrodiL/insta360-ble-protocol)**
 
-**Before adding a feature, please make sure you have thoroughly read the [Protocol Parsing Documentation](docs/protocol.md) and [Data Layer Documentation](docs/data_layer.md).**
+---
 
-### Adding New Command Support
+## 第三方资源
 
-When sending or parsing command and response frames, you only need to follow three simple steps:
+本项目网页内嵌了两个第三方字体（仅用于标题）：
 
-- Define the frame structure in `dji_protocol_data_structures`.
+- **ROG Fonts** —— ASUS，官方免费公开提供
+- **造字工坊凌黑体（子集）** —— 文件名标注 Noncommercial，**非商用授权**
 
-- Define the triple in `dji_protocol_data_descriptors` and provide the corresponding `creator` and `parser`. If not implemented, you can set them to `NULL`. If the parser function cannot find the corresponding `creator` or `parser`, the process of constructing or parsing the frame will stop.
+如果你是商业用途，请自行移除或替换（见 `main/web/index.html` 里的 `@font-face`）。
 
-- In the logic layer (`logic`), define the corresponding function, write the business logic, and call the `send_command` function in the command logic (`command_logic`).
+---
 
-If you add a new `.c` file in the logic layer, make sure to modify the `main/CMakeLists.txt` file.
+## 许可
 
-Regarding the `send_command` function, you need to know that: in addition to passing `CmdSet`, `CmdID`, and the frame structure, you also need to pass `CmdType`, which is the frame type, defined in `enums_logic`:
+MIT。上游 DJI demo 的原始版权声明保留在各自源文件头部。
 
-```c
-typedef enum {
-    CMD_NO_RESPONSE = 0x00,      // Command frame - No response required after sending data
-    CMD_RESPONSE_OR_NOT = 0x01,  // Command frame - Response required, no error if not received
-    CMD_WAIT_RESULT = 0x02,      // Command frame - Response required, error if not received
+---
 
-    ACK_NO_RESPONSE = 0x20,      // Response frame - No response required (00100000)
-    ACK_RESPONSE_OR_NOT = 0x21,  // Response frame - Response required, no error if not received (00100001)
-    ACK_WAIT_RESULT = 0x22       // Response frame - Response required, error if not received (00100010)
-} cmd_type_t;
-```
+## English
 
-Therefore, to support the creation of a command or response frame, the creation function should be implemented in the `creator`; to support parsing, the parsing function should be written in the `parser`.
+**CamLink** turns an ESP32-C6 into a multi-device camera controller: it speaks both the DJI R SDK
+protocol (as a GATT client connecting *to* the camera) and the Insta360 remote protocol (as a GATT
+server the camera connects *to*), and pushes GPS/telemetry to a Betaflight OSD over MSP.
 
-Additionally, the `send_command` function will decide whether to block and wait for data return based on the frame type, which is suitable for both send-receive and send-only scenarios. If direct data reception is required, the `data_wait_for_result_by_cmd` function should be called.
+Forked from DJI's official `Osmo-GPS-Controller-Demo` and restructured into a protocol-agnostic
+core plus pluggable backends — adding a new camera family means adding one directory under
+`adapters/`.
 
-### Modifying Callback Functions
+Key design notes: no NVS writes inside BLE callbacks (blocks the stack and drops the link); all
+control actions go through a single work queue so key scanning and OSD never block on BLE; config
+blobs are version-keyed so enum changes can't silently misinterpret saved settings.
 
-This program mainly uses callback functions in the following places:
-
-- **data** layer: `receive_camera_notify_handler`: Called after receiving a BLE notification to receive the data sent by the camera.
-
-- In **status_logic**: `update_camera_state_handler`: Called by `data.c`'s `receive_camera_notify_handler` to update the camera's status information.
-
-- In **connect_logic**: `receive_camera_disconnect_handler`: Called after a BLE disconnect event to handle unexpected reconnections and active disconnections, as well as state changes.
-
-- In **light_logic**: `led_state_timer_callback` and `led_blink_timer_callback`: Used to control the RGB LED display based on corresponding state changes (the default timer priority is 1).
-
-### Defining Button Functions
-
-In `key_logic`, long-press and single-click events are configured for the BOOT button, with corresponding logic operations implemented. More buttons and functions can be added here. The button scanning task is configured with a priority of 2. It is important to adjust the priority appropriately if other frequently executed tasks exist, as improper priority configuration may lead to unresponsive or non-functional buttons.
-
-### Adding Sleep Function Example
-
-After reading the documentation above, you can try adding a new feature: putting the camera to sleep mode with a single click of the BOOT button.
-
-For detailed implementation, please refer to: [Add Camera Sleep Feature Example Documentation](docs/add_camera_sleep_feature_example.md)
-
-## Reference Documents
-
-For a more comprehensive understanding of the demo, refer to the following documents:
-
-* **Q&A**: [FAQ_for_this_demo](docs/Q&A.md)
-
-- **ESP-IDF**: [ESP-IDF Official GitHub Repository](https://github.com/espressif/esp-idf/)
-
-- **LC76G GNSS Module**: [LC76G GNSS Module - Waveshare Wiki](https://www.waveshare.com/wiki/LC76G_GNSS_Module)
-
-- **ESP32-C6-WROOM-1**: [ESP32-C6-DevKitC-1 v1.2 - ESP32-C6 User Guide](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c6/esp32-c6-devkitc-1/user_guide.html)
-
-## About PR
-
-The DJI development team is dedicated to enhancing your development experience and welcomes your contributions. However, please note that PR code reviews may take some time. If you have any questions, feel free to contact us via email.
-
+The Insta360 protocol was reverse-engineered from on-air captures — see
+[insta360-ble-protocol](https://github.com/SchrodiL/insta360-ble-protocol).

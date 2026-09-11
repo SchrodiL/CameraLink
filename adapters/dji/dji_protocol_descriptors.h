@@ -64,4 +64,7 @@ int new_camera_status_push_data_parser(const uint8_t *data, size_t data_length, 
 uint8_t* key_report_creator(const void *structure, size_t *data_length, uint8_t cmd_type);
 int key_report_parser(const uint8_t *data, size_t data_length, void *structure_out, uint8_t cmd_type);
 
+uint8_t* camera_power_mode_switch_creator(const void *structure, size_t *data_length, uint8_t cmd_type);
+int camera_power_mode_switch_parser(const uint8_t *data, size_t data_length, void *structure_out, uint8_t cmd_type);
+
 #endif

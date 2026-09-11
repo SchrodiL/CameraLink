@@ -19,11 +19,10 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
-#include "esp_mac.h"
-#include "esp_random.h"
 
 #include "dji_ble.h"
 #include "dji_data.h"
@@ -497,18 +496,19 @@ int connect_logic_connect_camera(bool use_saved) {
         return -1;
     }
 
-    /* 相机协议连接：用 ESP32 真实 BLE MAC + 硬件随机验证码。 */
+    /* 相机协议连接（与 DJI 原始 SDK 完全一致：示例 MAC + rand 验证码）。
+     * 注意：mac_addr 是配对识别标识，必须保持稳定，切勿换成真实 BLE MAC，
+     * 否则相机配对记录不匹配，握手后相机会主动断开协议连接。 */
     uint32_t g_device_id = REMOTE_DEVICE_ID;
     uint8_t g_mac_addr_len = 6;
-    int8_t g_mac_addr[6] = {0};
-    esp_read_mac((uint8_t *)g_mac_addr, ESP_MAC_BT);
+    int8_t g_mac_addr[6] = {0x38, 0x34, 0x56, 0x78, 0x9A, 0xBC};  // 示例 MAC
     uint32_t g_fw_version = 0x00;
-    /* verify_mode=0：由相机根据已保存的配对历史决定是否弹窗验证（首次/重连都适用）。
-     * 如需强制验证可改为 1（相机弹窗，用户确认）。 */
-    uint8_t g_verify_mode = 0;
-    uint16_t g_verify_data = (uint16_t)(esp_random() % 10000);
+    uint8_t g_verify_mode = 0;           // 首次配对
+    uint16_t g_verify_data = 0;
     uint8_t g_camera_reserved = 0;
 
+    srand((unsigned int)time(NULL));
+    g_verify_data = (uint16_t)(rand() % 10000);
     res = connect_logic_protocol_connect(g_device_id, g_mac_addr_len, g_mac_addr,
                                          g_fw_version, g_verify_mode, g_verify_data,
                                          g_camera_reserved);
@@ -516,6 +516,11 @@ int connect_logic_connect_camera(bool use_saved) {
         ESP_LOGE(TAG, "Failed to connect to camera.");
         return -1;
     }
+
+    /* 连接成功后在任务上下文把对端地址落盘，供下次上电自动重连。
+     * 绝不能挪进 GATTC 回调 —— 那里做 NVS flash 写会阻塞 bluedroid，
+     * 拖垮 MTU 交换并导致相机立刻断链。 */
+    ble_persist_peer_addr();
 
     /* 获取设备版本信息，保存相机名称(product_id)供 OSD 显示 */
     version_query_response_frame_t *version_response = command_logic_get_version();

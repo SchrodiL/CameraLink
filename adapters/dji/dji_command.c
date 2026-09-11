@@ -226,6 +226,40 @@ camera_mode_switch_response_frame_t* command_logic_switch_camera_mode(camera_mod
     return response;
 }
 
+camera_power_mode_switch_response_frame_t* command_logic_set_power_mode(uint8_t power_mode) {
+    ESP_LOGI(TAG, "%s: Setting camera power mode to: %u", __FUNCTION__, (unsigned)power_mode);
+    if (connect_logic_get_state() != PROTOCOL_CONNECTED) {
+        ESP_LOGE(TAG, "Protocol connection to the camera failed. Current connection state: %d", connect_logic_get_state());
+        return NULL;
+    }
+
+    uint16_t seq = generate_seq();
+
+    camera_power_mode_switch_command_frame_t command_frame = {
+        .power_mode = power_mode,
+    };
+
+    CommandResult result = send_command(
+        0x00,
+        0x1A,
+        CMD_RESPONSE_OR_NOT,
+        &command_frame,
+        seq,
+        5000
+    );
+
+    if (result.structure == NULL) {
+        ESP_LOGE(TAG, "Failed to send command or receive response");
+        return NULL;
+    }
+
+    camera_power_mode_switch_response_frame_t *response =
+        (camera_power_mode_switch_response_frame_t *)result.structure;
+
+    ESP_LOGI(TAG, "Power mode switch response: ret_code=%d", response->ret_code);
+    return response;
+}
+
 /**
  * @brief Query device version
  *        查询设备版本号

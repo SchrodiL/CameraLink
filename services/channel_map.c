@@ -12,12 +12,14 @@
 #include "camera_backend.h"
 #include "controller.h"
 #include "pairing.h"
-#include "profile.h"
 
 static const char *TAG = "CHMAP";
 
 #define CHMAP_NVS_NAMESPACE "chmap"
-#define CHMAP_NVS_KEY       "bindings"
+/* 键名带版本：功能枚举一旦增删，旧配置各元素的索引含义就变了。换键名让旧配置
+ * 自然失效、回落到默认（全禁用），而不是被按新索引**错位解读**
+ * （那会把「对频」当成「协议切换」触发，比丢掉配置危险得多）。 */
+#define CHMAP_NVS_KEY       "bindings_v2"
 
 static channel_binding_t s_bindings[CHAN_FUNC_COUNT];
 static uint16_t s_last_channels[16] = { 0 };
@@ -37,9 +39,12 @@ void channel_map_init(void) {
         if (nvs_open(CHMAP_NVS_NAMESPACE, NVS_READONLY, &handle) == ESP_OK) {
             channel_binding_t buf[CHAN_FUNC_COUNT];
             size_t len = sizeof(buf);
+            /* 接受**较短**的旧 blob：新增功能项追加在枚举末尾，旧固件存的 blob
+             * 不包含它们。若这里要求 len 完全相等，新增功能就会把用户已存的配置
+             * 整体判为不合法并丢掉 —— 只拷贝实际长度，尾部保持默认（禁用）。 */
             if (nvs_get_blob(handle, CHMAP_NVS_KEY, buf, &len) == ESP_OK &&
-                len == sizeof(buf)) {
-                memcpy(s_bindings, buf, sizeof(buf));
+                len >= sizeof(channel_binding_t) && len <= sizeof(buf)) {
+                memcpy(s_bindings, buf, len);
             }
             nvs_close(handle);
         }
@@ -114,27 +119,36 @@ void channel_map_feed(const uint16_t ch[16]) {
         uint16_t v = ch[bind->channel - 1];
         bool active = (v >= bind->min && v <= bind->max);
         bool rising = active && !s_last[f];
-        bool falling = !active && s_last[f];
         s_last[f] = active;
 
+        /* 全部功能都是边沿触发：进范围触发一次。 */
+        if (!rising) {
+            continue;
+        }
+
         switch ((channel_func_t)f) {
-        case CHAN_FUNC_RECORD:
-            if (rising)      controller_record_start();
-            else if (falling) controller_record_stop();
-            break;
         case CHAN_FUNC_SHUTTER:
-            if (rising) controller_shutter();
+            /* 只管「按一下」—— 是开始录、停止录还是拍照，由相机自己决定。
+             * 走单机 BOOT 键同一条路径，保证两种触发源行为一致。 */
+            controller_single_press();
             break;
         case CHAN_FUNC_PROTO_SWITCH:
-            if (rising) controller_switch_protocol((camera_backend_active_id() == BACKEND_INSTA360) ? BACKEND_DJI : BACKEND_INSTA360);
+            controller_switch_protocol((camera_backend_active_id() == BACKEND_INSTA360) ? BACKEND_DJI : BACKEND_INSTA360);
             break;
         case CHAN_FUNC_PAIRING:
-            if (rising) controller_pairing_enter();
+            controller_pairing_enter();
             break;
-        case CHAN_FUNC_PROFILE_1:
-        case CHAN_FUNC_PROFILE_2:
-        case CHAN_FUNC_PROFILE_3:
-            if (rising) profile_set_active(f - CHAN_FUNC_PROFILE_1);
+        case CHAN_FUNC_CAMERA_PRESET:
+            controller_preset_next();
+            break;
+        case CHAN_FUNC_SLEEP_WAKE:
+            controller_sleep_wake();
+            break;
+        case CHAN_FUNC_POWER_OFF:
+            controller_power_off();
+            break;
+        case CHAN_FUNC_WAKE_BEACON:
+            controller_wake_beacon();
             break;
         default:
             break;

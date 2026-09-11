@@ -47,6 +47,7 @@ uint32_t current_photo_countdown_ms = 0;
 uint16_t current_timelapse_interval = 0;
 bool camera_status_initialized = false;
 uint8_t current_camera_bat_percentage = 0;
+uint8_t current_camera_power_mode = CAMERA_POWER_MODE_NORMAL;
 uint32_t current_remain_capacity = 0;
 uint32_t current_remain_time = 0;
 uint32_t current_remain_photo_num = 0;
@@ -246,6 +247,16 @@ void update_camera_state_handler(void *data) {
     current_remain_capacity = parsed_data->remain_capacity;
     current_remain_time = parsed_data->remain_time;
     current_remain_photo_num = parsed_data->remain_photo_num;
+
+    // Power mode changes rarely (only on sleep/wake), so log it when it does.
+    // 电源模式很少变（只在睡眠/唤醒时），变了值得打印
+    if (current_camera_power_mode != parsed_data->power_mode) {
+        current_camera_power_mode = parsed_data->power_mode;
+        ESP_LOGI(TAG, "Camera power mode -> %u (%s)",
+                 (unsigned)current_camera_power_mode,
+                 current_camera_power_mode == CAMERA_POWER_MODE_SLEEP ? "sleep" : "normal");
+        state_changed = true;
+    }
 
     // Check and update timelapse interval
     // 检查并更新延时摄影间隔

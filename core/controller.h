@@ -21,6 +21,15 @@ void controller_single_press(void);
 void controller_shutter(void);
 void controller_record_start(void);
 void controller_record_stop(void);
+void controller_preset_next(void);
+
+/* 电源类动作。wake_beacon 会阻塞到相机连上或超时（上限 15 秒），
+ * 因此也走工作队列，不会卡住按键扫描 / OSD。
+ * 不支持的后端会被静默跳过。 */
+void controller_sleep_wake(void);
+void controller_power_off(void);
+void controller_wake_beacon(void);
+
 void controller_switch_protocol(backend_id_t id);
 void controller_pairing_enter(void);
 void controller_pairing_exit(void);

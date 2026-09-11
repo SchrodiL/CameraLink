@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CamLink</title>
 <style>
+/* ROG Fonts 内嵌为 base64 —— 手机/平板等没装该字体的设备也能正确显示。
+ * 注意：这是 ASUS 的字体，内嵌等于随固件一起分发。 */
+@font-face {
+  font-family: "ROG Fonts";
+  src: url(data:font/otf;base64,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) format("opentype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+
 :root {
   --bg: #12161c;
   --panel: #1b2129;
@@ -15,6 +23,11 @@
   --ok: #3fb950;
   --warn: #d29922;
   --err: #f85149;
+  --orange: #ff8c1a;
+  /* ROG Fonts 是本机安装的显示字体（ASUS 的，全大写、只有拉丁字形）。 */
+  --font-display: "ROG Fonts", "Orbitron", "Rajdhani", ui-monospace, Menlo, monospace;
+  /* 标题字体：中文走内嵌的凌黑体子集，子集里没有的字符（拉丁/数字）自动落到 ROG。 */
+  --font-heading: "CamLink LingHei", var(--font-display);
 }
 * { box-sizing: border-box; }
 body {
@@ -25,11 +38,17 @@ header {
   padding: 14px 18px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
 }
-header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+header h1 {
+  font-family: var(--font-heading);
+  font-size: 24px; margin: 0; font-weight: 400; letter-spacing: 1.5px;
+  padding-bottom: 1px;
+  border-bottom: 2px solid var(--orange);
+}
 nav { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
 nav button {
   background: var(--panel); color: var(--muted); border: 1px solid var(--border);
   padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px;
+  font-family: var(--font-heading);
 }
 nav button.active { color: var(--text); border-color: var(--accent); background: #22303f; }
 main { padding: 16px 18px; max-width: 760px; margin: 0 auto; }
@@ -39,7 +58,11 @@ section.active { display: block; }
   background: var(--panel); border: 1px solid var(--border);
   border-radius: 8px; padding: 14px; margin-bottom: 14px;
 }
-.card h2 { font-size: 14px; margin: 0 0 10px; color: var(--muted); font-weight: 600; }
+.card h2 {
+  font-family: var(--font-heading);
+  font-size: 17px; margin: 0 0 12px; color: var(--text);
+  font-weight: 400; letter-spacing: 1px;
+}
 .row { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
 label { color: var(--muted); min-width: 70px; }
 input[type=number], select, input[type=text] {
@@ -69,10 +92,88 @@ th { color: var(--muted); font-weight: 500; }
   background: #22303f; border: 1px solid var(--accent); color: var(--text);
   padding: 10px 16px; border-radius: 8px; display: none; z-index: 10;
 }
-.ch-bars { display: flex; gap: 4px; align-items: flex-end; height: 60px; }
-.ch-bar { width: 16px; background: #274a6d; border-radius: 2px 2px 0 0; position: relative; }
+/* 通道条容器。通道号标签是绝对定位在条下方的（bottom:-18px），不占容器高度，
+ * 所以必须用 margin-bottom 在外面预留出这段空间，否则标签会顶到卡片下边框上。 */
+.ch-bars { display: flex; gap: 4px; align-items: flex-end; height: 60px; margin-bottom: 24px; }
+.ch-bar { width: 16px; background: #274a6d; border-radius: 3px; position: relative; }
 .ch-bar span { position: absolute; bottom: -18px; left: 0; right: 0; text-align: center; font-size: 9px; color: var(--muted); }
 .ch-bar.in-range { background: var(--ok); }
+
+/* ---- 通道映射（Betaflight Modes 风格）---- */
+.cm-list { display: flex; flex-direction: column; gap: 10px; }
+.cm-row {
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; background: #161d25;
+  transition: background .12s, border-color .12s;
+}
+.cm-row.disabled { opacity: .5; }
+.cm-row.detecting { border-color: var(--warn); }
+/* 通道值落在触发范围内 —— 整个功能区高亮 */
+.cm-row.triggered { background: #1c3040; border-color: var(--accent); opacity: 1; }
+.cm-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cm-name { font-weight: 600; min-width: 116px; }
+.cm-spacer { flex: 1; }
+/* 行程条：1000~2000us 全行程。两个手柄之间（蓝色）= 触发范围，
+   细竖线 = 通道当前值（进范围变绿），手柄可直接拖动。 */
+.cm-bar {
+  position: relative; height: 30px; margin: 10px 0 4px;
+  background: #0d141b; border: 1px solid var(--border); border-radius: 4px;
+  touch-action: none;            /* 拖手柄时不要触发页面滚动 */
+  user-select: none;
+}
+.cm-bar .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: #1e2833; }
+.cm-bar .fill {
+  position: absolute; top: 0; bottom: 0;
+  background: rgba(77,163,255,.32);
+  border-left: 1px solid var(--accent); border-right: 1px solid var(--accent);
+  cursor: grab;                  /* 拖中间 = 整条范围平移 */
+}
+.cm-bar .fill:active { cursor: grabbing; }
+.cm-bar .live {
+  position: absolute; top: -3px; bottom: -3px; width: 2px;
+  background: var(--warn); box-shadow: 0 0 4px rgba(0,0,0,.7);
+}
+.cm-bar .live.in-range { background: var(--ok); }
+.cm-bar .h {
+  position: absolute; top: -4px; bottom: -4px; width: 16px; margin-left: -8px;
+  background: var(--accent); border-radius: 3px; cursor: ew-resize;
+  box-shadow: 0 0 0 1px #0b1520;
+}
+.cm-bar .h::after {
+  content: ''; position: absolute; left: 7px; top: 6px; bottom: 6px;
+  width: 2px; background: rgba(0,0,0,.5);
+}
+.cm-scale {
+  display: flex; justify-content: space-between;
+  font-size: 10px; color: var(--muted); margin-bottom: 2px;
+}
+.cm-foot { display: flex; justify-content: flex-end; font-size: 12px; }
+
+/* ---- 二次确认弹窗 ---- */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.62);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 20; padding: 20px;
+}
+.modal-backdrop[hidden] { display: none; }
+.modal {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px; width: 100%; max-width: 430px;
+  box-shadow: 0 14px 44px rgba(0,0,0,.55);
+}
+.modal h3 { margin: 0 0 10px; font-size: 15px; }
+.modal p { margin: 0 0 16px; font-size: 13px; line-height: 1.75; color: var(--text); }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* 造字工坊凌黑体（非商用版）的**子集** —— 只含界面标题里实际用到的 36 个汉字，
+ * 5KB。整个字体有 1.4MB，塞不进固件；子集化后体积可忽略。
+ * 子集里**没有拉丁字形**，所以标题里的 RC / OSD / WiFi 会自动落到下一个字体（ROG）。
+ * 注意：这是造字工坊的非商用字体，内嵌等于随固件一起分发。 */
+@font-face {
+  font-family: "CamLink LingHei";
+  src: url(data:font/woff2;base64,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) format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
 </style>
 </head>
 <body>
@@ -81,7 +182,7 @@ th { color: var(--muted); font-weight: 500; }
   <nav id="nav"></nav>
 </header>
 <main>
-  <section id="tab-status" class="active">
+  <section id="tab-main" class="active">
     <div class="card">
       <h2>连接状态</h2>
       <div class="row">
@@ -93,46 +194,31 @@ th { color: var(--muted); font-weight: 500; }
       <h2>RC 通道实时值</h2>
       <div class="ch-bars" id="ch-bars"></div>
     </div>
-  </section>
 
-  <section id="tab-osd">
     <div class="card">
       <h2>OSD 槽位布局</h2>
       <div id="osd-slots"></div>
       <div class="row">
         <label>低电量报警 %</label>
         <input type="number" id="osd-batt" min="0" max="100">
-        <span class="mono" style="color:var(--muted)">0 = 关闭</span>
+        <span class="mono" style="color:var(--muted)">0 = 关闭，仅大疆可用</span>
       </div>
       <div class="row"><button class="btn" onclick="saveOsd()">保存 OSD 配置</button></div>
     </div>
-    <div class="card">
-      <h2>预设</h2>
-      <p style="color:var(--muted)">把当前 OSD + 通道映射存为预设。切换预设：协议切换键<b>短按</b>循环切换。</p>
-      <div class="row">
-        <label>当前预设</label>
-        <span class="mono" id="osd-active-profile">—</span>
-        <button class="btn secondary" onclick="saveProfile(0)">存到 1</button>
-        <button class="btn secondary" onclick="saveProfile(1)">存到 2</button>
-        <button class="btn secondary" onclick="saveProfile(2)">存到 3</button>
-      </div>
-    </div>
-  </section>
 
-  <section id="tab-protocol">
     <div class="card">
       <h2>协议与对频</h2>
       <div class="row">
         <label>协议</label>
-        <select id="proto-mode">
-          <option value="0">DJI (Osmo Action / 360)</option>
-          <option value="1">insta360 (X / Ace / RS)</option>
+        <select id="proto-mode" onchange="protoPicked()">
+          <option value="0">DJI</option>
+          <option value="1">Insta360</option>
         </select>
         <button class="btn" onclick="setProtocol()">切换协议</button>
       </div>
       <div class="row">
         <button class="btn secondary" onclick="pairStart()">开始对频</button>
-        <button class="btn secondary" onclick="pairStop()">停止对频</button>
+        <span style="color:var(--muted)">对频会关闭 WiFi</span>
       </div>
     </div>
     <div class="card">
@@ -153,25 +239,24 @@ th { color: var(--muted); font-weight: 500; }
 
   <section id="tab-chmap">
     <div class="card">
-      <h2>通道映射（Betaflight Modes 风格）</h2>
-      <p style="color:var(--muted)">每个功能绑定 (通道, 值范围 [min,max])。通道值落在范围内即激活。录制为状态型，其余为边沿触发。通道 0 表示禁用。</p>
-      <div id="chmap-rows"></div>
-      <div class="row"><button class="btn" onclick="saveChmap()">保存通道映射</button></div>
+      <h2>通道映射</h2>
+      <div class="cm-list" id="chmap-rows"></div>
+      <div class="row" style="margin-top:14px">
+        <button class="btn" onclick="saveChmap()">保存通道映射</button>
+      </div>
     </div>
   </section>
 
-  <section id="tab-firmware">
+  <section id="tab-maint">
     <div class="card">
-      <h2>固件升级 (OTA)</h2>
+      <h2>刷写固件</h2>
       <div class="row">
         <input type="file" id="ota-file" accept=".bin">
-        <button class="btn" onclick="doOta()">上传并升级</button>
+        <button class="btn" onclick="doOta()">刷写</button>
       </div>
       <p style="color:var(--warn)">升级完成后设备会自动重启。请勿断开电源。</p>
     </div>
-  </section>
 
-  <section id="tab-backup">
     <div class="card">
       <h2>配置备份 / 恢复</h2>
       <div class="row">
@@ -180,25 +265,43 @@ th { color: var(--muted); font-weight: 500; }
         <button class="btn secondary" onclick="doRestore()">导入配置</button>
       </div>
     </div>
+
+    <div class="card">
+      <h2>恢复默认设置</h2>
+      <p style="color:var(--muted)">清空全部设置并重启，固件本身不受影响。</p>
+      <div class="row">
+        <button class="btn danger" onclick="factoryReset()">恢复默认设置</button>
+      </div>
+    </div>
   </section>
 </main>
 <div id="toast"></div>
 
+<div id="modal" class="modal-backdrop" hidden>
+  <div class="modal">
+    <h3 id="modal-title"></h3>
+    <p id="modal-body"></p>
+    <div class="modal-actions">
+      <button class="btn secondary" id="modal-cancel">取消</button>
+      <button class="btn danger" id="modal-ok">确认</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const TABS = [
-  ['tab-status', '状态'], ['tab-osd', 'OSD'], ['tab-protocol', '协议'],
-  ['tab-chmap', '通道映射'], ['tab-firmware', '固件'],
-  ['tab-backup', '备份'],
+  ['tab-main', '通用'], ['tab-chmap', '通道映射'], ['tab-maint', '备份 / 升级'],
 ];
-const OSD_ITEMS = ['录制状态', 'GPS 卫星数', '速度+海拔', '相机电量', '录制规格', '名称+剩余容量'];
+const OSD_ITEMS = ['录制状态', 'GPS 卫星数', '速度+海拔', '相机电量', '录制规格', '名称+剩余容量', 'GPS 纬度', 'GPS 经度'];
+/* [功能号, 显示名]。功能号必须与固件 channel_func_t 的顺序一致。 */
 const FUNCS = [
-  [1, '录制开/停', true],
-  [2, '快门/拍照', false],
-  [3, '协议切换', false],
-  [4, '对频', false],
-  [5, '切换 Profile 1', false],
-  [6, '切换 Profile 2', false],
-  [7, '切换 Profile 3', false],
+  [1, '快门 / 录制'],
+  [2, '协议切换'],
+  [3, '对频'],
+  [4, '切换相机预设'],
+  [5, '睡眠 / 唤醒'],
+  [6, '关机'],
+  [7, '深度唤醒'],
 ];
 
 function toast(msg) {
@@ -260,20 +363,22 @@ async function pollStatus() {
 
     renderWifi(s.wifi_on);
     document.getElementById('wifi-auto-delay').value = s.wifi_auto_delay;
-    document.getElementById('osd-active-profile').textContent = (s.active_profile + 1);
 
     const kv = document.getElementById('status-kv');
-    const proto = s.protocol === 1 ? 'insta360' : 'DJI';
-    document.getElementById('proto-mode').value = s.protocol;
+    const proto = s.protocol === 1 ? 'Insta360' : 'DJI';
+    protoSync(s);
     kv.innerHTML = [
       ['协议', proto + (s.paired ? ' (已对频)' : ' (未对频)')],
       ['卫星数', s.gps.satellites],
       ['GPS 定位', s.gps.valid ? '有效' : (s.gps.connected ? '搜星中' : '未连接')],
+      ['纬度', s.gps.valid ? s.gps.lat.toFixed(6) : '--'],
+      ['经度', s.gps.valid ? s.gps.lon.toFixed(6) : '--'],
       ['速度', s.gps.speed_ms.toFixed(1) + ' m/s'],
       ['海拔', s.gps.altitude_m.toFixed(0) + ' m'],
     ].map(([k, v]) => '<b>' + k + '</b><span>' + v + '</span>').join('');
 
-    renderChBars(s.channels, s.channels.map(() => false));
+    updateChmapLive(s.channels);
+    renderChBars(s.channels, chmapActiveChannels(s.channels));
   } catch (e) { /* ignore */ }
 }
 
@@ -304,25 +409,51 @@ async function saveOsd() {
   await jsend('PUT', '/api/osd', { slots, batt_alarm: batt });
   toast('OSD 配置已保存');
 }
-/* 把当前 OSD + 通道映射存为预设 N（通道映射由后端从 live 快照带入） */
-async function saveProfile(i) {
-  const slots = [0, 1, 2, 3].map(x => parseInt(document.getElementById('osd-slot-' + x).value, 10));
-  const batt = parseInt(document.getElementById('osd-batt').value, 10) || 0;
-  await jsend('PUT', '/api/profile', { index: i, profile: { slots, batt_alarm: batt } });
-  toast('已保存到预设 ' + (i + 1));
-}
 
 /* ---- 协议 ---- */
 async function loadProtocol() {
   const d = await jget('/api/protocol');
   document.getElementById('proto-mode').value = d.mode;
 }
+/* ---- 协议切换 ----
+ * 状态轮询每 2 秒跑一次。如果它无条件把下拉框写回当前协议，用户根本来不及点
+ * 「切换协议」——选中的值会先被顶回去，按钮发出去的就是原协议，后端看到角色
+ * 没变直接返回，表现为「点了没用」。所以用户一旦选中就暂停轮询同步，
+ * 直到后端真的报出目标协议（或超时失败）。 */
+let protoWant = null;      /* 用户选中、等待生效的协议；null = 没有待确认的选择 */
+let protoWantAt = 0;
+
+function protoPicked() {
+  protoWant = parseInt(document.getElementById('proto-mode').value, 10);
+  protoWantAt = Date.now();
+}
+
 async function setProtocol() {
-  await jsend('PUT', '/api/protocol', { mode: parseInt(document.getElementById('proto-mode').value, 10) });
-  toast('协议切换请求已发送');
+  protoWant = parseInt(document.getElementById('proto-mode').value, 10);
+  protoWantAt = Date.now();
+  await jsend('PUT', '/api/protocol', { mode: protoWant });
+  toast('正在切换协议…');
+}
+
+/* 轮询里调用：有待确认的选择时不覆盖下拉框，并判断是否已生效 / 超时 */
+function protoSync(s) {
+  const sel = document.getElementById('proto-mode');
+
+  if (protoWant === null) {
+    sel.value = s.protocol;
+    return;
+  }
+  if (s.protocol === protoWant) {          /* 已生效，恢复正常同步 */
+    protoWant = null;
+    sel.value = s.protocol;
+    toast('协议已切换为 ' + (s.protocol === 1 ? 'Insta360' : 'DJI'));
+  } else if (Date.now() - protoWantAt > 6000) {
+    protoWant = null;                      /* 超时：放弃，下拉框回到真实状态 */
+    sel.value = s.protocol;
+    toast('协议切换未生效');
+  }
 }
 async function pairStart() { await fetch('/api/pairing/start', { method: 'POST' }); toast('开始对频'); }
-async function pairStop() { await fetch('/api/pairing/stop', { method: 'POST' }); toast('停止对频'); }
 
 /* ---- WiFi ---- */
 function renderWifi(on) {
@@ -337,43 +468,307 @@ async function saveWifi() {
 async function wifiOn() { await jsend('PUT', '/api/wifi', { wifi_on: true }); renderWifi(true); toast('WiFi 已打开'); }
 async function wifiOff() { await jsend('PUT', '/api/wifi', { wifi_on: false }); renderWifi(false); toast('WiFi 已关闭'); }
 
-/* ---- 通道映射 ---- */
-let chmapCache = {};
+/* ---- 通道映射（Betaflight Modes 风格）---- */
+const CM_MIN = 1000, CM_MAX = 2000;              /* RC 行程范围 (us) */
+const CM_DEFAULT_LO = 1300, CM_DEFAULT_HI = 1700;
+const CM_AUTO = -1;                              /* 下拉里「自动检测」的哨兵值 */
+const CM_DETECT_MS = 10000;                      /* 自动检测窗口 */
+const CM_DETECT_MIN_SPAN = 60;                   /* 小于此变化量视为没拨动 (us) */
+const CM_FULL_LO = 1100, CM_FULL_HI = 1900;      /* 已扫到两端 → 可提前结束检测 */
+
+const cmState = {};   /* func -> {min, max}，UI 侧真值；手柄位置由它算出来 */
+const cmLast  = {};   /* func -> 上一次确定选中的通道，自动检测失败时回退用 */
+let detect = {};      /* func -> {until, prev, lo[16], hi[16]}，正在自动检测的功能 */
+let detectTimer = null;
+
+function cmEl(id) { return document.getElementById(id); }
+
+/* 值 → 行程条上的百分比位置 */
+function cmPct(v) {
+  return Math.min(100, Math.max(0, (v - CM_MIN) / (CM_MAX - CM_MIN) * 100));
+}
+
 function buildChmap() {
-  const el = document.getElementById('chmap-rows');
+  const el = cmEl('chmap-rows');
   el.innerHTML = '';
+
   FUNCS.forEach(([f, name]) => {
     const row = document.createElement('div');
-    row.className = 'row';
+    row.className = 'cm-row disabled';
+    row.id = 'cm-row-' + f;
+
+    let opts = '<option value="0">未分配</option>' +
+               '<option value="' + CM_AUTO + '">自动检测…</option>';
+    for (let i = 1; i <= 16; i++) opts += '<option value="' + i + '">CH' + i + '</option>';
+
     row.innerHTML =
-      '<label>' + name + '</label>' +
-      '<span class="mono" style="color:var(--muted)">通道</span>' +
-      '<input type="number" id="cm-ch-' + f + '" min="0" max="16">' +
-      '<span class="mono" style="color:var(--muted)">min</span>' +
-      '<input type="number" id="cm-min-' + f + '" min="0" max="2500">' +
-      '<span class="mono" style="color:var(--muted)">max</span>' +
-      '<input type="number" id="cm-max-' + f + '" min="0" max="2500">';
+      '<div class="cm-head">' +
+        '<span class="cm-name">' + name + '</span>' +
+        '<span class="cm-spacer"></span>' +
+        '<select id="cm-ch-' + f + '" onchange="cmOnChan(' + f + ')">' + opts + '</select>' +
+      '</div>' +
+      '<div class="cm-bar" id="cm-bar-' + f + '">' +
+        '<div class="fill" id="cm-fill-' + f + '"></div>' +
+        '<div class="live" id="cm-live-' + f + '"></div>' +
+        '<div class="h" id="cm-hmin-' + f + '"></div>' +
+        '<div class="h" id="cm-hmax-' + f + '"></div>' +
+      '</div>' +
+      '<div class="cm-scale"><span>1000</span><span>1250</span><span>1500</span><span>1750</span><span>2000</span></div>' +
+      '<div class="cm-foot mono" id="cm-val-' + f + '"></div>';
     el.appendChild(row);
+
+    /* 刻度线插到最前面，免得盖住范围块和手柄 */
+    const bar = cmEl('cm-bar-' + f);
+    for (let i = 1; i < 10; i++) {
+      const t = document.createElement('div');
+      t.className = 'tick'; t.style.left = (i * 10) + '%';
+      bar.insertBefore(t, bar.firstChild);
+    }
+
+    cmEl('cm-fill-' + f).addEventListener('pointerdown', (e) => cmPan(f, e));
+    cmEl('cm-hmin-' + f).addEventListener('pointerdown', (e) => cmDrag(f, 'min', e));
+    cmEl('cm-hmax-' + f).addEventListener('pointerdown', (e) => cmDrag(f, 'max', e));
+
+    cmState[f] = { min: CM_DEFAULT_LO, max: CM_DEFAULT_HI };
+    cmRender(f);
   });
 }
+
+/* 写入触发范围（自动钳制到行程内、保证 min<=max、按 5us 取整） */
+function cmSetRange(f, lo, hi) {
+  const snap = (v) => Math.max(CM_MIN, Math.min(CM_MAX, Math.round(v / 5) * 5));
+  lo = snap(lo); hi = snap(hi);
+  if (lo > hi) { const t = lo; lo = hi; hi = t; }
+  cmState[f] = { min: lo, max: hi };
+  cmRender(f);
+}
+
+
+/* 从 DOM 读该功能当前配置（下拉停在 -1/自动 时视为未分配） */
+function cmRow(f) {
+  const chn = parseInt(cmEl('cm-ch-' + f).value, 10);
+  const st = cmState[f] || { min: CM_DEFAULT_LO, max: CM_DEFAULT_HI };
+  return { channel: chn > 0 ? chn : 0, min: st.min, max: st.max };
+}
+
+/* 画出范围手柄、蓝色范围块、数值文字；未分配时整体隐藏 */
+function cmRender(f) {
+  const row = cmEl('cm-row-' + f);
+  const on = cmRow(f).channel > 0;
+  const st = cmState[f] || { min: CM_DEFAULT_LO, max: CM_DEFAULT_HI };
+  const a = cmPct(st.min), b = cmPct(st.max);
+
+  row.classList.toggle('disabled', !on);
+
+  cmEl('cm-fill-' + f).style.left = a + '%';
+  cmEl('cm-fill-' + f).style.width = Math.max(0, b - a) + '%';
+  cmEl('cm-hmin-' + f).style.left = a + '%';
+  cmEl('cm-hmax-' + f).style.left = b + '%';
+
+  ['cm-fill-', 'cm-hmin-', 'cm-hmax-', 'cm-live-'].forEach((p) => {
+    cmEl(p + f).style.display = on ? '' : 'none';
+  });
+  cmEl('cm-val-' + f).textContent = on ? '触发范围 ' + st.min + ' – ' + st.max + ' µs' : '';
+  if (!on) row.classList.remove('triggered');
+}
+
+function cmOnChan(f) {
+  const v = parseInt(cmEl('cm-ch-' + f).value, 10);
+
+  if (v === CM_AUTO) {                 /* 选「自动检测…」→ 开始监听通道变化 */
+    cmArmDetect(f, cmLast[f] === undefined ? 0 : cmLast[f]);
+    return;
+  }
+  cmCancelDetect(f);
+  cmLast[f] = v > 0 ? v : 0;
+  cmRender(f);
+}
+
+/* 手柄拖动：像素位置 → 通道值 */
+function cmValAt(bar, clientX) {
+  const r = bar.getBoundingClientRect();
+  const p = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+  return CM_MIN + p * (CM_MAX - CM_MIN);
+}
+
+/* 通用：按下后跟随指针拖动，抬起/取消自动解绑 */
+function cmTrackPointer(move, downEv) {
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+  move(downEv);
+}
+
+function cmDrag(f, which, ev) {
+  ev.preventDefault();
+  const bar = cmEl('cm-bar-' + f);
+
+  cmTrackPointer((e) => {
+    const v = cmValAt(bar, e.clientX);
+    const st = cmState[f] || { min: CM_DEFAULT_LO, max: CM_DEFAULT_HI };
+    /* 两个手柄不交叉：拖 min 时以 max 为上限，反之亦然 */
+    if (which === 'min') cmSetRange(f, Math.min(v, st.max), st.max);
+    else                 cmSetRange(f, st.min, Math.max(v, st.min));
+  }, ev);
+}
+
+/* 拖范围块中间：整条范围平移，宽度保持不变 */
+function cmPan(f, ev) {
+  ev.preventDefault();
+  const bar = cmEl('cm-bar-' + f);
+  const st0 = cmState[f] || { min: CM_DEFAULT_LO, max: CM_DEFAULT_HI };
+  const width = st0.max - st0.min;
+  const offset = cmValAt(bar, ev.clientX) - st0.min;   /* 按在范围里的相对位置 */
+
+  cmTrackPointer((e) => {
+    let lo = cmValAt(bar, e.clientX) - offset;
+    /* 贴到两端时整条一起顶住，宽度不变 —— 交给 cmSetRange 各自钳制会把范围压扁 */
+    if (lo < CM_MIN) lo = CM_MIN;
+    if (lo + width > CM_MAX) lo = CM_MAX - width;
+    cmSetRange(f, lo, lo + width);
+  }, ev);
+}
+
+/* 更新实时指针；落在触发范围内则高亮整个功能区 */
+function updateChmapLive(ch) {
+  FUNCS.forEach(([f]) => {
+    const sel = cmEl('cm-ch-' + f);
+    if (!sel) return;
+    const row = cmEl('cm-row-' + f);
+    const chn = parseInt(sel.value, 10);
+
+    if (!(chn > 0)) {                  /* 未分配 / 正在自动检测 */
+      cmEl('cm-live-' + f).style.display = 'none';
+      row.classList.remove('triggered');
+      return;
+    }
+    const st = cmState[f] || { min: CM_DEFAULT_LO, max: CM_DEFAULT_HI };
+    const v = ch[chn - 1];
+    const inRange = (v >= st.min && v <= st.max);
+
+    const live = cmEl('cm-live-' + f);
+    live.style.display = '';
+    live.style.left = cmPct(v) + '%';
+    live.classList.toggle('in-range', inRange);
+    row.classList.toggle('triggered', inRange);
+  });
+}
+
+/* 当前有功能处于激活态的通道（状态页高亮用） */
+function chmapActiveChannels(ch) {
+  const act = new Array(16).fill(false);
+  FUNCS.forEach(([f]) => {
+    if (!cmEl('cm-ch-' + f)) return;   /* 通道页尚未构建时不报错 */
+    const b = cmRow(f);
+    if (b.channel === 0) return;
+    const v = ch[b.channel - 1];
+    if (v >= b.min && v <= b.max) act[b.channel - 1] = true;
+  });
+  return act;
+}
+
+/* ---- 自动检测通道（下拉里选「自动检测…」触发）---- */
+function cmArmDetect(f, prev) {
+  detect[f] = {
+    until: Date.now() + CM_DETECT_MS,
+    prev: prev,                       /* 失败时回退到的通道 */
+    lo: new Array(16).fill(9999),
+    hi: new Array(16).fill(0),
+  };
+  cmEl('cm-row-' + f).classList.add('detecting');
+  cmEl('cm-val-' + f).textContent = '请拨动开关 / 摇杆…';
+  if (!detectTimer) cmDetectTick();
+}
+
+function cmCancelDetect(f) {
+  if (!detect[f]) return;
+  delete detect[f];
+  cmEl('cm-row-' + f).classList.remove('detecting');
+}
+
+/* best < 0 表示整个窗口内没检测到有效变化 */
+function cmFinishDetect(f, best, lo, hi) {
+  const d = detect[f];
+  delete detect[f];
+  cmEl('cm-row-' + f).classList.remove('detecting');
+  if (!d) return;
+
+  if (best < 0) {
+    cmEl('cm-ch-' + f).value = d.prev;
+    cmLast[f] = d.prev;
+    cmRender(f);
+    toast('没检测到通道变化，拨动开关后重试');
+    return;
+  }
+
+  cmEl('cm-ch-' + f).value = best + 1;
+  cmLast[f] = best + 1;
+  cmSetRange(f, lo, hi);              /* 用实测到的行程作为初始触发范围 */
+  toast('已识别为 CH' + (best + 1));
+}
+
+async function cmDetectTick() {
+  detectTimer = null;
+  try {
+    const s = await jget('/api/status');
+    updateChmapLive(s.channels);
+
+    for (const f of Object.keys(detect)) {
+      const d = detect[f];
+      if (!d) continue;
+
+      for (let i = 0; i < 16; i++) {
+        if (s.channels[i] < d.lo[i]) d.lo[i] = s.channels[i];
+        if (s.channels[i] > d.hi[i]) d.hi[i] = s.channels[i];
+      }
+
+      /* 取变化幅度最大的通道 */
+      let best = -1, span = 0;
+      for (let i = 0; i < 16; i++) {
+        const sp = d.hi[i] - d.lo[i];
+        if (sp > span) { span = sp; best = i; }
+      }
+
+      if (best >= 0 && d.lo[best] <= CM_FULL_LO && d.hi[best] >= CM_FULL_HI) {
+        /* 已经扫到两端（开关拨到底），不必等满整个窗口 */
+        cmFinishDetect(f, best, d.lo[best], d.hi[best]);
+      } else if (Date.now() >= d.until) {
+        if (best >= 0 && span >= CM_DETECT_MIN_SPAN) {
+          cmFinishDetect(f, best, d.lo[best], d.hi[best]);
+        } else {
+          cmFinishDetect(f, -1, 0, 0);
+        }
+      }
+    }
+  } catch (e) { /* 单次失败不影响整个检测窗口 */ }
+  if (Object.keys(detect).length > 0) detectTimer = setTimeout(cmDetectTick, 120);
+}
+
+/* ---- 读写 ---- */
 async function loadChmap() {
   const d = await jget('/api/chmap');
-  chmapCache = {};
-  d.bindings.forEach(b => { chmapCache[b.func] = b; });
+  const cache = {};
+  d.bindings.forEach(b => { cache[b.func] = b; });
   FUNCS.forEach(([f]) => {
-    const b = chmapCache[f] || { channel: 0, min: 0, max: 0 };
-    document.getElementById('cm-ch-' + f).value = b.channel;
-    document.getElementById('cm-min-' + f).value = b.min;
-    document.getElementById('cm-max-' + f).value = b.max;
+    const b = cache[f] || { channel: 0, min: 0, max: 0 };
+    cmEl('cm-ch-' + f).value = b.channel;
+    cmLast[f] = b.channel;
+    /* 未分配的保持默认范围，这样一分配就能直接微调 */
+    if (b.channel > 0 && b.max > b.min) cmState[f] = { min: b.min, max: b.max };
+    cmRender(f);
   });
 }
+
 async function saveChmap() {
-  const bindings = FUNCS.map(([f]) => ({
-    func: f,
-    channel: parseInt(document.getElementById('cm-ch-' + f).value, 10) || 0,
-    min: parseInt(document.getElementById('cm-min-' + f).value, 10) || 0,
-    max: parseInt(document.getElementById('cm-max-' + f).value, 10) || 0,
-  }));
+  const bindings = FUNCS.map(([f]) => {
+    const b = cmRow(f);
+    return { func: f, channel: b.channel, min: b.min, max: b.max };
+  });
   await jsend('PUT', '/api/chmap', { bindings });
   toast('通道映射已保存');
 }
@@ -403,6 +798,56 @@ async function doRestore() {
   const r = await fetch('/api/config/restore', { method: 'POST', body: f });
   if (r.ok) toast('配置已导入');
   else toast('导入失败：' + r.status);
+}
+
+/* ---- 二次确认弹窗 ---- */
+/* 不用原生 confirm()：浏览器被勾了「禁止此页面再弹出对话框」之后会静默返回 false，
+ * 对不可撤销的操作来说行为不可控，而且样式也和界面不搭。返回 Promise<boolean>。 */
+function confirmDialog(title, bodyHtml, okLabel) {
+  return new Promise((resolve) => {
+    const bd = document.getElementById('modal');
+    const btnOk = document.getElementById('modal-ok');
+    const btnCancel = document.getElementById('modal-cancel');
+
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-body').innerHTML = bodyHtml;
+    btnOk.textContent = okLabel || '确认';
+
+    const done = (v) => {
+      bd.hidden = true;
+      btnOk.onclick = btnCancel.onclick = bd.onclick = null;
+      document.removeEventListener('keydown', onKey);
+      resolve(v);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') done(false); };
+
+    btnOk.onclick = () => done(true);
+    btnCancel.onclick = () => done(false);
+    bd.onclick = (e) => { if (e.target === bd) done(false); };   /* 点遮罩 = 取消 */
+    document.addEventListener('keydown', onKey);
+
+    bd.hidden = false;
+    btnCancel.focus();     /* 默认焦点给「取消」，避免回车误触发 */
+  });
+}
+
+/* 恢复默认设置 */
+async function factoryReset() {
+  const ok = await confirmDialog(
+    '恢复默认设置',
+    '这会清空<b>全部设置</b>并重启设备：<br>' +
+    '协议、对频记录、通道映射、OSD 布局、Insta360 学到的机型与唤醒 ID、WiFi 空闲时长。' +
+    '<br><br>固件本身不受影响。' +
+    '<br><br><b style="color:var(--err)">此操作不可撤销。</b>',
+    '确认恢复'
+  );
+  if (!ok) return;
+
+  toast('正在清除设置…');
+  try {
+    await fetch('/api/factory-reset', { method: 'POST' });
+  } catch (e) { /* 设备随即重启，连接中断是正常的 */ }
+  toast('设置已清除，设备正在重启…');
 }
 
 /* ---- 启动 ---- */

@@ -120,6 +120,12 @@ bool ble_is_dji_camera_adv(esp_ble_gap_cb_param_t *scan_result);
 /* Persist the remote peer address to NVS (used by pairing). */
 esp_err_t ble_save_peer_addr(const esp_bd_addr_t addr);
 
+/* 仅在 RAM 中记录对端地址（GAP/GATTC 回调可安全调用，不做 flash 写）。 */
+void ble_note_peer_addr(const esp_bd_addr_t addr);
+
+/* 把 RAM 中的对端地址落盘。只能在任务上下文调用，绝不可在 BT 回调里调用。 */
+esp_err_t ble_persist_peer_addr(void);
+
 /* Stop the DJI client role (disconnect + stop scan + unregister GATTC app + reset state). */
 esp_err_t ble_client_stop(void);
 

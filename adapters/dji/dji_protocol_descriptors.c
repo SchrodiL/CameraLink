@@ -56,6 +56,9 @@ const data_descriptor_t data_descriptors[] = {
     // Key report
     // 按键上报
     {0x00, 0x11, (data_creator_func_t)key_report_creator, (data_parser_func_t)key_report_parser},
+    // Camera power mode switch (sleep/wake)
+    // 相机电源模式切换（睡眠/唤醒）
+    {0x00, 0x1A, (data_creator_func_t)camera_power_mode_switch_creator, (data_parser_func_t)camera_power_mode_switch_parser},
 };
 const size_t DATA_DESCRIPTORS_COUNT = sizeof(data_descriptors) / sizeof(data_descriptors[0]);
 
@@ -603,6 +606,70 @@ int key_report_parser(const uint8_t *data, size_t data_length, void *structure_o
     output_response->ret_code = response->ret_code;
 
     ESP_LOGI(TAG, "Key Report Response parsed successfully. ret_code: %u", output_response->ret_code);
+
+    return 0;
+}
+
+uint8_t* camera_power_mode_switch_creator(const void *structure, size_t *data_length, uint8_t cmd_type) {
+    if (structure == NULL || data_length == NULL) {
+        ESP_LOGE(TAG, "Invalid input: structure or data_length is NULL");
+        return NULL;
+    }
+
+    uint8_t *data = NULL;
+
+    // Check if it's a command frame
+    // 判断是否为命令帧
+    if ((cmd_type & 0x20) == 0) {
+        const camera_power_mode_switch_command_frame_t *command_frame =
+            (const camera_power_mode_switch_command_frame_t *)structure;
+
+        *data_length = sizeof(camera_power_mode_switch_command_frame_t);
+
+        data = (uint8_t *)malloc(*data_length);
+        if (data == NULL) {
+            ESP_LOGE(TAG, "Memory allocation failed in camera_power_mode_switch_creator");
+            return NULL;
+        }
+
+        memcpy(data, command_frame, *data_length);
+    } else {
+        // 暂不支持此功能的应答帧创建
+        // Response frame creation for this functionality is not yet supported.
+        ESP_LOGE(TAG, "Response frames are not supported in camera_power_mode_switch_creator");
+        return NULL;
+    }
+
+    return data;
+}
+
+int camera_power_mode_switch_parser(const uint8_t *data, size_t data_length, void *structure_out, uint8_t cmd_type) {
+    if (data == NULL || structure_out == NULL) {
+        ESP_LOGE(TAG, "camera_power_mode_switch_parser: NULL input detected");
+        return -1;
+    }
+
+    if ((cmd_type & 0x20) == 0) {
+        // 暂不支持此功能的命令帧解析
+        // Command frame parsing for this functionality is not yet supported.
+        ESP_LOGE(TAG, "camera_power_mode_switch_parser: Only response frames are supported");
+        return -1;
+    }
+
+    if (data_length < sizeof(camera_power_mode_switch_response_frame_t)) {
+        ESP_LOGE(TAG, "camera_power_mode_switch_parser: Data length too short for response frame. Expected: %zu, Got: %zu",
+                 sizeof(camera_power_mode_switch_response_frame_t), data_length);
+        return -1;
+    }
+
+    const camera_power_mode_switch_response_frame_t *response =
+        (const camera_power_mode_switch_response_frame_t *)data;
+    camera_power_mode_switch_response_frame_t *output_response =
+        (camera_power_mode_switch_response_frame_t *)structure_out;
+
+    output_response->ret_code = response->ret_code;
+
+    ESP_LOGI(TAG, "Camera Power Mode Switch Response parsed. ret_code: %u", output_response->ret_code);
 
     return 0;
 }

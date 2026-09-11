@@ -28,7 +28,6 @@
 #include "pairing.h"
 #include "light.h"
 #include "web_server.h"
-#include "profile.h"
 
 static const char *TAG = "LOGIC_KEY";
 
@@ -95,24 +94,25 @@ static void handle_proto_switch(void) {
     controller_switch_protocol(next);   /* 异步切换运行角色 + 持久化 */
 
     if (next == BACKEND_DJI) {
-        light_logic_flash(13, 13, 0, 2);   /* 黄灯双闪 */
+        light_logic_flash(13, 0, 0, 2);   /* 红灯双闪 = DJI */
     } else {
-        light_logic_flash(0, 13, 0, 2);    /* 绿灯双闪 */
+        light_logic_flash(0, 13, 0, 2);    /* 绿灯双闪 = insta360 */
     }
     ESP_LOGI(TAG, "Switched protocol to %s", (next == BACKEND_INSTA360) ? "insta360" : "DJI");
 }
 
 /**
- * @brief 处理协议切换键短按：循环切换预设
- *        Handle short press of protocol switch button: cycle preset
+ * @brief 处理协议切换键短按：切换「相机端」预设
+ *        Handle short press of the second button: cycle the CAMERA-side preset
  *
- * 1→2→3→1 循环。LED 用青色闪「新预设序号」次作为反馈。
+ * 只上报一次 QS 键短按，切换到哪个预设由相机自身的快速切换列表决定
+ * （见 docs/Q&A_CN.md 第 10 条）。控制器不保存、也不指定任何预设。
+ * LED 用青色闪 2 次作为反馈。
  */
-static void handle_proto_switch_short(void) {
-    uint8_t next = (uint8_t)((profile_get_active() + 1) % PROFILE_COUNT);
-    profile_set_active(next);
-    light_logic_flash(0, 13, 13, next + 1);   /* 青色闪 N 次 = 预设 N */
-    ESP_LOGI(TAG, "Switched preset to %u", (unsigned)(next + 1));
+static void handle_camera_preset_next(void) {
+    controller_preset_next();
+    light_logic_flash(0, 13, 13, 2);   /* 青色双闪 = 已发送预设切换 */
+    ESP_LOGI(TAG, "Camera preset -> next (QS key report)");
 }
 
 /**
@@ -229,10 +229,10 @@ static void key_scan_task(void *arg) {
                     handle_proto_switch();
                 }
             } else if (!proto_down && s_proto_switch_pressed) {
-                /* 松开：短按 = 切换预设，长按已触发过则忽略 */
+                /* 松开：短按 = 切换相机预设，长按已触发过则忽略 */
                 s_proto_switch_pressed = false;
                 if (!s_proto_switch_triggered) {
-                    handle_proto_switch_short();
+                    handle_camera_preset_next();
                 }
             }
         }
