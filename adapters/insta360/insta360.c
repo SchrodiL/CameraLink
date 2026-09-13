@@ -651,6 +651,11 @@ static void send_command(const uint8_t *cmd, size_t len) {
     }
 }
 
+/* 公开的 notify 发送口：GPS 上行等任意帧都走这里。 */
+void insta360_send_raw(const uint8_t *data, size_t len) {
+    send_command(data, len);
+}
+
 /* 把模式字符串格式化成大疆风格 "XKXX XXXX"：
  * "4K|30|DEW" -> "4K30 DEW"（分辨率+帧率连写，附加用空格）
  * "16:9|MEGA" -> "16:9 MEGA"（画幅 + 附加用空格） */

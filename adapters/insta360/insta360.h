@@ -35,6 +35,9 @@ int insta360_logic_init(bool do_name_scan);
 /* Send shutter toggle command. */
 void insta360_logic_shutter(void);
 
+/* 发送任意 notify 帧（GPS 上行等）。未连接时静默丢弃。 */
+void insta360_send_raw(const uint8_t *data, size_t len);
+
 /* 切换「相机端」预设/模式（通用「下一个模式」键，目标由相机决定）。 */
 void insta360_logic_mode_next(void);
 

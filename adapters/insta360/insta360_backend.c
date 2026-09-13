@@ -6,9 +6,11 @@
 
 #include "camera_state.h"
 #include "insta360.h"
+#include "insta360_gps.h"
 
 static int insta360_init(void)
 {
+    insta360_gps_init(); /* 挂接 GPS 上行回调（幂等）。 */
     return insta360_logic_init(false);
 }
 
